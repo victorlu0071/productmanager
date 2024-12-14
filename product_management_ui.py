@@ -20,6 +20,7 @@ class ProductManagerUI:
     def init_gui(self):
         self.root = tk.Tk()
         self.root.title("Product Management")
+        
         window_width = 1080
         window_height = 700
         screen_width = self.root.winfo_screenwidth()
