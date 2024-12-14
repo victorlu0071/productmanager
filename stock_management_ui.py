@@ -6,45 +6,56 @@ class StockManagerUI:
         self.products = products
         self.product_dict = product_dict
         self.save_products = save_products
+        self.current_input_step = 0
+        self.current_stock_entry = {}
+        self.root = None
         self.init_gui()
 
     def init_gui(self):
-        self.root = tk.Tk()
-        self.root.title("Stock Management")
-        window_width = 1080
-        window_height = 700
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        position_top = int((screen_height - window_height) / 2)
-        position_left = int((screen_width - window_width) / 2)
-        self.root.geometry(f"{window_width}x{window_height}+{position_left}+{position_top}")
+        try:
+            self.root = tk.Tk()
+            self.root.title("Stock Management")
+            
+            # 确保窗口关闭时返回主菜单
+            self.root.protocol("WM_DELETE_WINDOW", self.return_to_main_menu)
+            
+            window_width = 1080
+            window_height = 700
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+            position_top = int((screen_height - window_height) / 2)
+            position_left = int((screen_width - window_width) / 2)
+            self.root.geometry(f"{window_width}x{window_height}+{position_left}+{position_top}")
 
-        self.entry_label = tk.Label(self.root, text="Enter Product Code:")
-        self.entry_label.pack()
+            self.entry_label = tk.Label(self.root, text="Enter Product Code:")
+            self.entry_label.pack()
 
-        self.entry_field = tk.Entry(self.root, width=50)
-        self.entry_field.pack()
-        self.entry_field.bind('<Return>', self.handle_entry)
-        self.root.bind('<Key>', self.focus_entry_on_keypress)
+            self.entry_field = tk.Entry(self.root, width=50)
+            self.entry_field.pack()
+            self.entry_field.bind('<Return>', self.handle_entry)
+            self.root.bind('<Key>', self.focus_entry_on_keypress)
 
-        self.tree = ttk.Treeview(self.root, columns=("Code", "ProductName", "LocationCode", "StockQuantity"), show='headings')
-        self.tree.heading("Code", text="Product Code")
-        self.tree.heading("ProductName", text="Product Name")
-        self.tree.heading("LocationCode", text="Location Code")
-        self.tree.heading("StockQuantity", text="Stock Quantity")
-        self.tree.pack(fill=tk.BOTH, expand=True)
+            self.tree = ttk.Treeview(self.root, columns=("Code", "ProductName", "LocationCode", "StockQuantity"), show='headings')
+            self.tree.heading("Code", text="Product Code")
+            self.tree.heading("ProductName", text="Product Name")
+            self.tree.heading("LocationCode", text="Location Code")
+            self.tree.heading("StockQuantity", text="Stock Quantity")
+            self.tree.pack(fill=tk.BOTH, expand=True)
 
-        self.tree.bind('<Double-1>', self.edit_selected_item)
+            self.tree.bind('<Double-1>', self.edit_selected_item)
 
-        back_button = tk.Button(self.root, text="Back", command=self.return_to_main_menu)
-        back_button.pack(pady=10)
+            back_button = tk.Button(self.root, text="Back", command=self.return_to_main_menu)
+            back_button.pack(pady=10)
 
-        self.status_label = tk.Label(self.root, text="", anchor="w")
-        self.status_label.pack(fill=tk.X, padx=10, pady=5)
+            self.status_label = tk.Label(self.root, text="", anchor="w")
+            self.status_label.pack(fill=tk.X, padx=10, pady=5)
 
-        self.update_tree_view()
+            self.update_tree_view()
 
-        self.root.mainloop()
+            self.root.mainloop()
+        except tk.TclError as e:
+            print(f"Error initializing GUI: {e}")
+            self.return_to_main_menu()
 
     def update_tree_view(self):
         for item in self.tree.get_children():
@@ -67,24 +78,27 @@ class StockManagerUI:
 
             def save_changes():
                 new_value = entry_field.get()
-                values = list(self.tree.item(selected_item, 'values'))
-                values[column_number] = new_value
-                self.tree.item(selected_item, values=values)
-                product_code = values[0]
-                if product_code in self.product_dict:
-                    if column_number == 1:
-                        self.product_dict[product_code]["Name"] = new_value
-                    elif column_number == 2:
-                        self.product_dict[product_code]["LocationCode"] = new_value
-                    elif column_number == 3:
-                        try:
-                            self.product_dict[product_code]["StockQuantity"] = float(new_value)
-                        except ValueError:
-                            self.status_label.config(text="Error: Stock quantity must be a valid number.")
-                self.save_products()
-                self.update_tree_view()
-                self.status_label.config(text="Success: Changes saved successfully!")
-                entry_window.destroy()
+                try:
+                    if column_number == 3:  # StockQuantity
+                        new_value = float(new_value)
+                    values = list(self.tree.item(selected_item, 'values'))
+                    values[column_number] = new_value
+                    self.tree.item(selected_item, values=values)
+                    product_code = values[0]
+                    if product_code in self.product_dict:
+                        if column_number == 1:
+                            self.product_dict[product_code]["Name"] = new_value
+                        elif column_number == 2:
+                            self.product_dict[product_code]["LocationCode"] = new_value
+                        elif column_number == 3:
+                            self.product_dict[product_code]["StockQuantity"] = new_value
+                    self.save_products()
+                    self.update_tree_view()
+                    self.status_label.config(text="Success: Changes saved successfully!")
+                    entry_window.destroy()
+                except ValueError:
+                    self.status_label.config(text="Error: Stock quantity must be a valid number.")
+                    return  # Do not close the window if there's an error
 
             save_button = tk.Button(entry_window, text="Save", command=save_changes)
             save_button.pack(pady=5)
@@ -92,6 +106,7 @@ class StockManagerUI:
     def focus_entry_on_keypress(self, event):
         if self.root.focus_get() != self.entry_field:
             self.entry_field.focus()
+            self.entry_field.delete(0, tk.END)  # Clear existing text
             self.entry_field.insert(tk.END, event.char)
 
     def handle_entry(self, event):
@@ -137,6 +152,14 @@ class StockManagerUI:
                 self.status_label.config(text="Error: Stock quantity must be a valid number.")
 
     def return_to_main_menu(self):
-        self.root.destroy()
-        from main import ProductManager
-        ProductManager()
+        try:
+            if self.root:
+                self.root.quit()
+                self.root.destroy()
+            import main
+            main.ProductManager()
+        except Exception as e:
+            print(f"Error returning to main menu: {e}")
+            # 确保在发生错误时也能退出
+            if self.root:
+                self.root.destroy()

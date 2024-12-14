@@ -13,68 +13,74 @@ class ProductManagerUI:
         self.save_products = save_products
         self.current_input_step = 0
         self.current_product = {}
-        self.filtered_products = products  # Track filtered products
+        self.filtered_products = products
         self.pasteboard_monitoring = False
         self.init_gui()
 
     def init_gui(self):
-        self.root = tk.Tk()
-        self.root.title("Product Management")
-        
-        window_width = 1080
-        window_height = 700
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        position_top = int((screen_height - window_height) / 2)
-        position_left = int((screen_width - window_width) / 2)
-        self.root.geometry(f"{window_width}x{window_height}+{position_left}+{position_top}")
-    
-        # Create Search Bar (Separate from Data Entry)
-        self.search_label = tk.Label(self.root, text="Search Product:")
-        self.search_label.pack(pady=5)
-    
-        self.search_entry = tk.Entry(self.root, width=50)
-        self.search_entry.pack(pady=5)
-        self.search_entry.bind('<Return>', self.handle_search)  # Bind to Enter key for search
-        self.search_entry.bind("<FocusIn>", self.stop_pasteboard_monitoring)  # Stop monitoring when focus in
-        self.search_entry.bind("<FocusOut>", self.start_pasteboard_monitoring)  # Resume monitoring when focus out
-    
-        # Treeview to display products
-        self.tree = ttk.Treeview(self.root, columns=("Name", "Cost", "Link", "Quantity", "Code", "LocationCode", "StockQuantity", "AddedDate"), show='headings')
-        for col in ["Name", "Cost", "Link", "Quantity", "Code", "LocationCode", "StockQuantity", "AddedDate"]:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=100, anchor='center')
-        self.tree.pack(fill=tk.BOTH, expand=True)
-    
-        # Add the event binding for column double-click
-        self.tree.bind('<Double-1>', self.on_item_double_click)
-    
-        # Buttons Section (Separate)
-        clear_button = tk.Button(self.root, text="Clear Database", command=self.clear_database)
-        clear_button.pack(pady=10)
-    
-        delete_button = tk.Button(self.root, text="Delete Selected Entries", command=self.delete_selected_entries)
-        delete_button.pack(pady=10)
-    
-        back_button = tk.Button(self.root, text="Back", command=self.return_to_main_menu)
-        back_button.pack(pady=10)
-    
-        self.status_label = tk.Label(self.root, text="", anchor="w")
-        self.status_label.pack(fill=tk.X, padx=10, pady=5)
-    
-        # Create Product Data Input Section
-        self.entry_label = tk.Label(self.root, text="Enter Product Name:")
-        self.entry_label.pack(pady=10)
-    
-        self.entry_field = tk.Entry(self.root, width=50)
-        self.entry_field.pack(pady=5)
-        self.entry_field.bind('<Return>', self.handle_entry)
-        self.entry_field.bind("<FocusIn>", self.stop_pasteboard_monitoring)  # Stop monitoring when focus in
-        self.entry_field.bind("<FocusOut>", self.start_pasteboard_monitoring)  # Resume monitoring when focus out
-    
-        self.refresh_tree()
-    
-        self.root.mainloop()
+        try:
+            self.root = tk.Tk()
+            self.root.title("Product Management")
+            
+            self.root.protocol("WM_DELETE_WINDOW", self.return_to_main_menu)
+            
+            window_width = 1080
+            window_height = 700
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+            position_top = int((screen_height - window_height) / 2)
+            position_left = int((screen_width - window_width) / 2)
+            self.root.geometry(f"{window_width}x{window_height}+{position_left}+{position_top}")
+            
+            # Create Search Bar (Separate from Data Entry)
+            self.search_label = tk.Label(self.root, text="Search Product:")
+            self.search_label.pack(pady=5)
+            
+            self.search_entry = tk.Entry(self.root, width=50)
+            self.search_entry.pack(pady=5)
+            self.search_entry.bind('<Return>', self.handle_search)  # Bind to Enter key for search
+            self.search_entry.bind("<FocusIn>", self.stop_pasteboard_monitoring)  # Stop monitoring when focus in
+            self.search_entry.bind("<FocusOut>", self.start_pasteboard_monitoring)  # Resume monitoring when focus out
+            
+            # Treeview to display products
+            self.tree = ttk.Treeview(self.root, columns=("Name", "Cost", "Link", "Quantity", "Code", "LocationCode", "StockQuantity", "AddedDate"), show='headings')
+            for col in ["Name", "Cost", "Link", "Quantity", "Code", "LocationCode", "StockQuantity", "AddedDate"]:
+                self.tree.heading(col, text=col)
+                self.tree.column(col, width=100, anchor='center')
+            self.tree.pack(fill=tk.BOTH, expand=True)
+            
+            # Add the event binding for column double-click
+            self.tree.bind('<Double-1>', self.on_item_double_click)
+            
+            # Buttons Section (Separate)
+            clear_button = tk.Button(self.root, text="Clear Database", command=self.clear_database)
+            clear_button.pack(pady=10)
+            
+            delete_button = tk.Button(self.root, text="Delete Selected Entries", command=self.delete_selected_entries)
+            delete_button.pack(pady=10)
+            
+            back_button = tk.Button(self.root, text="Back", command=self.return_to_main_menu)
+            back_button.pack(pady=10)
+            
+            self.status_label = tk.Label(self.root, text="", anchor="w")
+            self.status_label.pack(fill=tk.X, padx=10, pady=5)
+            
+            # Create Product Data Input Section
+            self.entry_label = tk.Label(self.root, text="Enter Product Name:")
+            self.entry_label.pack(pady=10)
+            
+            self.entry_field = tk.Entry(self.root, width=50)
+            self.entry_field.pack(pady=5)
+            self.entry_field.bind('<Return>', self.handle_entry)
+            self.entry_field.bind("<FocusIn>", self.stop_pasteboard_monitoring)  # Stop monitoring when focus in
+            self.entry_field.bind("<FocusOut>", self.start_pasteboard_monitoring)  # Resume monitoring when focus out
+            
+            self.refresh_tree()
+            
+            self.root.mainloop()
+        except tk.TclError as e:
+            print(f"Error initializing GUI: {e}")
+            self.return_to_main_menu()
 
     def stop_pasteboard_monitoring(self, event=None):
         self.pasteboard_monitoring = False  # Stop monitoring
@@ -223,58 +229,64 @@ class ProductManagerUI:
                 return new_code
 
     def handle_entry(self, event):
-        user_input = self.entry_field.get().strip()
-        if self.current_input_step == 0:
-            if user_input:
-                # Debugging: Print input to ensure it's being correctly captured
-                print(f"Step 0 - Product Name: {user_input}")
-                self.current_product["Name"] = user_input
-                self.current_input_step += 1
-                self.entry_label.config(text="Enter Product Cost:")
-                self.entry_field.delete(0, tk.END)
-            else:
-                self.status_label.config(text="Error: Product name cannot be empty.")
-        elif self.current_input_step == 1:
-            try:
-                cost = float(user_input)  # Ensure that cost is a valid number
-                # Debugging: Print cost to ensure correct input
-                print(f"Step 1 - Product Cost: {cost}")
-                self.current_product["Cost"] = f"{cost:.2f}"
-                self.current_input_step += 1
-                self.entry_label.config(text="Enter Product Link:")
-                self.entry_field.delete(0, tk.END)
-            except ValueError:
-                self.status_label.config(text="Error: Please enter a valid cost.")
-        elif self.current_input_step == 2:
-            if user_input:
-                # Debugging: Print link to ensure it is correctly entered
-                print(f"Step 2 - Product Link: {user_input}")
-                self.current_product["Link"] = user_input
-                self.current_input_step += 1
-                self.entry_label.config(text="Enter Product Quantity:")
-                self.entry_field.delete(0, tk.END)
-            else:
-                self.status_label.config(text="Error: Product link cannot be empty.")
-        elif self.current_input_step == 3:
-            try:
-                quantity = int(user_input)
-                # Debugging: Print quantity to ensure correct input
-                print(f"Step 3 - Product Quantity: {quantity}")
-                self.current_product["Quantity"] = str(quantity)
-                self.current_product["Code"] = self.generate_unique_code()
-                self.current_product["LocationCode"] = ""
-                self.current_product["StockQuantity"] = "0"
-                self.current_product["AddedDate"] = datetime.now().strftime("%Y-%m-%d")
-                self.products.append(self.current_product)
-                self.save_products()  # Save to the database
-                self.filtered_products = self.products  # Reset filtered products to include the new product
-                self.refresh_tree()  # Refresh Treeview to include the newly added product
-                self.current_input_step = 0
-                self.current_product = {}
-                self.entry_label.config(text="Enter Product Name:")
-                self.entry_field.delete(0, tk.END)
-            except ValueError:
-                self.status_label.config(text="Error: Please enter a valid quantity.")
+        try:
+            user_input = self.entry_field.get().strip()
+            if self.current_input_step == 0:
+                if user_input:
+                    # Debugging: Print input to ensure it's being correctly captured
+                    print(f"Step 0 - Product Name: {user_input}")
+                    self.current_product["Name"] = user_input
+                    self.current_input_step += 1
+                    self.entry_label.config(text="Enter Product Cost:")
+                    self.entry_field.delete(0, tk.END)
+                else:
+                    self.status_label.config(text="Error: Product name cannot be empty.")
+            elif self.current_input_step == 1:
+                try:
+                    cost = float(user_input)  # Ensure that cost is a valid number
+                    # Debugging: Print cost to ensure correct input
+                    print(f"Step 1 - Product Cost: {cost}")
+                    self.current_product["Cost"] = f"{cost:.2f}"
+                    self.current_input_step += 1
+                    self.entry_label.config(text="Enter Product Link:")
+                    self.entry_field.delete(0, tk.END)
+                except ValueError:
+                    self.status_label.config(text="Error: Please enter a valid cost.")
+            elif self.current_input_step == 2:
+                if user_input:
+                    # Debugging: Print link to ensure it is correctly entered
+                    print(f"Step 2 - Product Link: {user_input}")
+                    self.current_product["Link"] = user_input
+                    self.current_input_step += 1
+                    self.entry_label.config(text="Enter Product Quantity:")
+                    self.entry_field.delete(0, tk.END)
+                else:
+                    self.status_label.config(text="Error: Product link cannot be empty.")
+            elif self.current_input_step == 3:
+                try:
+                    quantity = int(user_input)
+                    if quantity < 0:
+                        self.status_label.config(text="Error: Stock quantity cannot be negative")
+                        return
+                    # Debugging: Print quantity to ensure correct input
+                    print(f"Step 3 - Product Quantity: {quantity}")
+                    self.current_product["Quantity"] = str(quantity)
+                    self.current_product["Code"] = self.generate_unique_code()
+                    self.current_product["LocationCode"] = ""
+                    self.current_product["StockQuantity"] = "0"
+                    self.current_product["AddedDate"] = datetime.now().strftime("%Y-%m-%d")
+                    self.products.append(self.current_product)
+                    self.save_products()  # Save to the database
+                    self.filtered_products = self.products  # Reset filtered products to include the new product
+                    self.refresh_tree()  # Refresh Treeview to include the newly added product
+                    self.current_input_step = 0
+                    self.current_product = {}
+                    self.entry_label.config(text="Enter Product Name:")
+                    self.entry_field.delete(0, tk.END)
+                except ValueError:
+                    self.status_label.config(text="Error: Please enter a valid quantity.")
+        except Exception as e:
+            self.status_label.config(text=f"Error: {str(e)}")
     def delete_selected_entries(self):
         selected_items = self.tree.selection()
         if selected_items:
@@ -318,9 +330,26 @@ class ProductManagerUI:
             self.status_label.config(text="Database clearance cancelled.")
 
     def return_to_main_menu(self):
-        self.root.destroy()  # Properly close the current window
-        import main  # Assuming the main program logic exists in a file named main.py
-        main.ProductManager()  # Initialize the main menu
+        try:
+            if self.root:
+                self.root.quit()
+                self.root.destroy()
+            import main
+            main.ProductManager()
+        except Exception as e:
+            print(f"Error returning to main menu: {e}")
+
+    def exit_program(self):
+        if self.root:
+            self.root.quit()
+            self.root.destroy()
+
+    def edit_selected_item(self, event):
+        selected_items = self.tree.selection()
+        if not selected_items:
+            self.status_label.config(text="Please select an item to edit")
+            return
+        selected_item = selected_items[0]
 
 # Example use:
 if __name__ == "__main__":

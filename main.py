@@ -10,6 +10,7 @@ class ProductManager:
     def __init__(self):
         self.file_path = "products.csv"
         self.products, self.product_dict = load_products(self.file_path)
+        self.root = None
         self.init_gui()
 
 
@@ -31,10 +32,13 @@ class ProductManager:
         button_frame.pack(expand=True)
 
         button1 = tk.Button(button_frame, text="Product Management", command=self.open_product_manager, font=("Helvetica", 14), width=20, height=2)
-        button1.pack(side=tk.LEFT, padx=100)
+        button1.pack(side=tk.LEFT, padx=50)
 
         button2 = tk.Button(button_frame, text="Stock Management", command=self.open_stock_manager, font=("Helvetica", 14), width=20, height=2)
-        button2.pack(side=tk.RIGHT, padx=100)
+        button2.pack(side=tk.LEFT, padx=50)
+
+        button3 = tk.Button(button_frame, text="Shopping Assistant", command=self.open_shopping_assistant, font=("Helvetica", 14), width=20, height=2)
+        button3.pack(side=tk.LEFT, padx=50)
 
         # Add exit button
         exit_button = tk.Button(self.root, text="Exit", command=self.exit_program, font=("Helvetica", 14), width=20, height=2)
@@ -43,15 +47,25 @@ class ProductManager:
         self.root.mainloop()
 
     def exit_program(self):
-        self.root.destroy()
+        if self.root:
+            self.root.quit()
+            self.root.destroy()
 
     def open_product_manager(self):
-        self.root.destroy()
+        if self.root:
+            self.root.destroy()
         ProductManagerUI(self.products, lambda: save_products(self.file_path, self.products))
 
     def open_stock_manager(self):
-        self.root.destroy()
+        if self.root:
+            self.root.destroy()
         StockManagerUI(self.products, self.product_dict, lambda: save_products(self.file_path, self.products))
+
+    def open_shopping_assistant(self):
+        if self.root:
+            self.root.destroy()
+        from shopping_assistant_ui import ShoppingAssistantUI
+        ShoppingAssistantUI()
 
 if __name__ == "__main__":
     ProductManager()
