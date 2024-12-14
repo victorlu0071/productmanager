@@ -11,6 +11,7 @@ import json
 import threading
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
+import time
 
 class ShoppingAssistantUI:
     def __init__(self):
@@ -18,6 +19,7 @@ class ShoppingAssistantUI:
         self.browser = None
         self.recording = False
         self.purchases = []
+        self.product_cache = {}  # 用于存储产品页面的图片URL
         self.init_gui()
         
     def init_gui(self):
@@ -39,8 +41,12 @@ class ShoppingAssistantUI:
             control_frame = tk.Frame(self.root)
             control_frame.pack(pady=10)
 
-            self.start_button = tk.Button(control_frame, text="Start Recording", command=self.start_recording)
+            self.start_button = tk.Button(control_frame, text="Start Browser", command=self.start_recording)
             self.start_button.pack(side=tk.LEFT, padx=5)
+
+            self.continue_button = tk.Button(control_frame, text="Continue Recording", command=self.continue_recording)
+            self.continue_button.pack(side=tk.LEFT, padx=5)
+            self.continue_button.config(state=tk.DISABLED)
 
             self.stop_button = tk.Button(control_frame, text="Stop Recording", command=self.stop_recording)
             self.stop_button.pack(side=tk.LEFT, padx=5)
@@ -70,8 +76,28 @@ class ShoppingAssistantUI:
         try:
             service = Service(ChromeDriverManager().install())
             self.browser = webdriver.Chrome(service=service)
-            self.recording = True
+            
+            # 首先访问登录页面
+            print("Accessing login page...")
+            self.browser.get("https://login.1688.com/member/signin.htm")
+            
+            # 更新状态标签
+            self.status_label.config(text="请在浏览器中登录，然后点击 'Continue Recording' 按钮...")
+            
+            # 禁用开始按钮，启用继续按钮
             self.start_button.config(state=tk.DISABLED)
+            self.continue_button.config(state=tk.NORMAL)
+            
+        except Exception as e:
+            self.status_label.config(text=f"Error starting browser: {e}")
+
+    def continue_recording(self):
+        try:
+            # 确认登录状态
+            time.sleep(2)
+            
+            self.recording = True
+            self.continue_button.config(state=tk.DISABLED)
             self.stop_button.config(state=tk.NORMAL)
             self.status_label.config(text="Recording started...")
             
@@ -79,13 +105,14 @@ class ShoppingAssistantUI:
             threading.Thread(target=self.monitor_pages, daemon=True).start()
             
         except Exception as e:
-            self.status_label.config(text=f"Error starting browser: {e}")
+            self.status_label.config(text=f"Error starting recording: {e}")
 
     def stop_recording(self):
         self.recording = False
         if self.browser:
             self.browser.quit()
         self.start_button.config(state=tk.NORMAL)
+        self.continue_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.DISABLED)
         self.status_label.config(text="Recording stopped")
         self.save_purchases()
@@ -109,20 +136,83 @@ class ShoppingAssistantUI:
         except Exception as e:
             print(f"Error extracting product info: {e}")
 
-    def extract_1688_info(self):
-        # 1688.com 特定的提取逻辑
+    def extract_product_id(self, url):
+        # 从URL中提取产品ID
         try:
-            product_name = WebDriverWait(self.browser, 10).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "product-title"))
+            return url.split('offer/')[1].split('.html')[0]
+        except:
+            return None
+
+    def cache_product_images(self):
+        try:
+            current_url = self.browser.current_url
+            product_id = self.extract_product_id(current_url)
+            if not product_id:
+                return
+
+            # 获取所有图片容器
+            image_containers = self.browser.find_elements(By.CLASS_NAME, "od-gallery-turn-item-wrapper")
+            image_urls = []
+            
+            # 只获取前6张图片
+            for container in image_containers[:6]:
+                img_element = container.find_element(By.CLASS_NAME, "od-gallery-img")
+                img_url = img_element.get_attribute("src")
+                if img_url:
+                    image_urls.append(img_url)
+            
+            # 获取产品名称
+            product_name = self.browser.find_element(By.TAG_NAME, "h1").text
+
+            # 缓存信息
+            self.product_cache[product_id] = {
+                'images': image_urls,
+                'name': product_name,
+                'timestamp': datetime.now()
+            }
+            print(f"Cached {len(image_urls)} images for product {product_id}")
+
+        except Exception as e:
+            print(f"Error caching product images: {e}")
+
+    def extract_1688_info(self):
+        try:
+            # 从订单页面获取产品链接
+            product_link = WebDriverWait(self.browser, 10).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "offer-link"))
+            )
+            product_id = self.extract_product_id(product_link.get_attribute("href"))
+            product_name = product_link.text
+
+            # 获取价格
+            price = WebDriverWait(self.browser, 10).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "amount"))
             ).text
-            price = self.browser.find_element(By.CLASS_NAME, "price").text
-            # 获取图片URL
-            image_elements = self.browser.find_elements(By.CSS_SELECTOR, ".detail-gallery-img img")
-            image_urls = [img.get_attribute("src") for img in image_elements]
-            
-            self.download_images(image_urls, product_name)
-            self.add_purchase_record("1688.com", product_name, price, "1", image_urls)
-            
+
+            # 获取数量
+            quantity = WebDriverWait(self.browser, 10).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "q-inputnumber-input"))
+            ).get_attribute("value")
+
+            # 检查缓存中是否有该产品的图片
+            image_urls = []
+            if product_id in self.product_cache:
+                cache_data = self.product_cache[product_id]
+                image_urls = cache_data['images']
+                
+                # 生成唯一的产品代码
+                product_code = f"P{product_id}"  # 可以根据需要修改代码生成规则
+                
+                # 下载图片到以产品代码命名的文件夹
+                self.download_images(image_urls, product_code)
+                
+                # 清除缓存
+                del self.product_cache[product_id]
+
+            # 记录购买信息
+            self.add_purchase_record("1688.com", product_name, price, quantity, image_urls, product_code)
+            print(f"Recorded purchase: {product_name} with {len(image_urls)} images")
+
         except Exception as e:
             print(f"Error extracting 1688 info: {e}")
 
@@ -143,9 +233,9 @@ class ShoppingAssistantUI:
         except Exception as e:
             print(f"Error extracting Taobao info: {e}")
 
-    def download_images(self, image_urls, product_name):
+    def download_images(self, image_urls, product_code):
         # 创建图片保存目录
-        save_dir = os.path.join("product_images", product_name)
+        save_dir = os.path.join("product_images", product_code)
         os.makedirs(save_dir, exist_ok=True)
 
         for i, url in enumerate(image_urls):
@@ -155,10 +245,11 @@ class ShoppingAssistantUI:
                     file_path = os.path.join(save_dir, f"image_{i+1}.jpg")
                     with open(file_path, 'wb') as f:
                         f.write(response.content)
+                    print(f"Saved image {i+1} for product {product_code}")
             except Exception as e:
                 print(f"Error downloading image {url}: {e}")
 
-    def add_purchase_record(self, website, product, price, quantity, image_urls):
+    def add_purchase_record(self, website, product, price, quantity, image_urls, product_code):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         record = {
             "time": timestamp,
@@ -166,7 +257,8 @@ class ShoppingAssistantUI:
             "product": product,
             "price": price,
             "quantity": quantity,
-            "images": len(image_urls)
+            "images": len(image_urls),
+            "product_code": product_code
         }
         self.purchases.append(record)
         
