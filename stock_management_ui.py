@@ -1,8 +1,12 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
+import openpyxl
+from PIL import Image
+import os
 
 class StockManagerUI:
     def __init__(self, products, product_dict, save_products):
+        self.file_path = "products.xlsx"
         self.products = products
         self.product_dict = product_dict
         self.save_products = save_products
@@ -10,6 +14,56 @@ class StockManagerUI:
         self.current_stock_entry = {}
         self.root = None
         self.init_gui()
+
+    def save_to_excel(self):
+        try:
+            # 创建新的工作簿
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            
+            # 写入表头
+            headers = ["Name", "Cost", "Link", "Code", "LocationCode", "StockQuantity", "AddedDate"]
+            for col, header in enumerate(headers, 1):
+                ws.cell(row=1, column=col, value=header)
+            
+            # 写入数据
+            for row, product in enumerate(self.products, 2):
+                for col, header in enumerate(headers, 1):
+                    ws.cell(row=row, column=col, value=product.get(header, ""))
+                
+                # 设置行高以适应图片
+                ws.row_dimensions[row].height = 150
+                
+                # 尝试添加图片
+                try:
+                    product_code = product.get("Code", "")
+                    if product_code:
+                        img_dir = os.path.join("product_images", product_code)
+                        if os.path.exists(img_dir):
+                            for i, img_file in enumerate(sorted(os.listdir(img_dir))):
+                                if i >= 6:  # 最多显示6张图片
+                                    break
+                                if img_file.endswith(('.jpg', '.png')):
+                                    img_path = os.path.join(img_dir, img_file)
+                                    # 调整图片大小用于Excel显示
+                                    img = Image.open(img_path)
+                                    img.thumbnail((100, 100))
+                                    temp_path = f"temp_img_{i}.png"
+                                    img.save(temp_path)
+                                    # 添加到Excel
+                                    xl_img = openpyxl.drawing.image.Image(temp_path)
+                                    col_letter = openpyxl.utils.get_column_letter(8 + i)  # 从第8列开始
+                                    ws.add_image(xl_img, f"{col_letter}{row}")
+                                    os.remove(temp_path)
+                except Exception as e:
+                    print(f"Error adding images for product {product_code}: {e}")
+            
+            # 保存文件
+            wb.save(self.file_path)
+            
+        except Exception as e:
+            print(f"Error saving to Excel: {e}")
+            messagebox.showerror("Error", f"Failed to save data: {str(e)}")
 
     def init_gui(self):
         try:
@@ -140,7 +194,7 @@ class StockManagerUI:
                 product["LocationCode"] = self.current_stock_entry["LocationCode"]
                 product["StockQuantity"] = self.current_stock_entry["StockQuantity"]
 
-                self.save_products()
+                self.save_to_excel()  # 使用新的保存方法
                 self.update_tree_view()
 
                 self.status_label.config(text="Success: Stock entry recorded successfully!")

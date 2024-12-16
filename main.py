@@ -4,11 +4,10 @@ from product_management_ui import ProductManagerUI
 from stock_management_ui import StockManagerUI
 from datetime import datetime, timedelta
 import os
-import csv
 
 class ProductManager:
     def __init__(self):
-        self.file_path = "products.csv"
+        self.file_path = "products.xlsx"
         self.products, self.product_dict = load_products(self.file_path)
         self.root = None
         self.init_gui()
@@ -54,7 +53,7 @@ class ProductManager:
     def open_product_manager(self):
         if self.root:
             self.root.destroy()
-        ProductManagerUI(self.products, lambda: save_products(self.file_path, self.products))
+        ProductManagerUI(self.products, None)
 
     def open_stock_manager(self):
         if self.root:
