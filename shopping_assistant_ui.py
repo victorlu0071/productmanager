@@ -105,6 +105,21 @@ class ShoppingAssistantUI:
             chrome_options.add_argument("--ignore-gpu-blocklist")
             chrome_options.add_argument("--enable-gpu-rasterization")
             
+            # 添加控制新标签页行为的参数
+            chrome_options.add_argument("--disable-features=IsolateOrigins,site-per-process")
+            chrome_options.add_argument("--disable-site-isolation-trials")
+            
+            # 添加实验性选项
+            chrome_options.add_experimental_option("prefs", {
+                "profile.default_content_settings.popups": 0,
+                "profile.default_content_setting_values.automatic_downloads": 1,
+                "profile.default_content_settings.notifications": 2,
+                "profile.default_content_setting_values.new_window_disposition": 1,  # 强制在当前标签页打开
+                "profile.default_content_setting_values.new_tab_disposition": 1,     # 强制在当前标签页打开
+                "profile.default_content_setting_values.window_open_disposition": 1,  # 强制在当前标签页打开
+                "profile.default_content_setting_values.tabs": 2
+            })
+            
             # 初始化浏览器
             service = Service(ChromeDriverManager().install())
             self.browser = webdriver.Chrome(service=service, options=chrome_options)
@@ -149,10 +164,14 @@ class ShoppingAssistantUI:
                 try:
                     self.browser.quit()
                 except:
-                    pass  # 忽略关闭浏览器时的错误
+                    pass  # 忽略关闭览器时的错误
+            
+            # 清理缓存
+            self.clear_cache()
+            
             self.browser = None
             self.current_url = None  # 重置当前URL
-            self.processed_products.clear()  # 重置处理态
+            self.processed_products.clear()  # 重置处理状态
             self.start_button.config(state=tk.NORMAL)
             self.continue_button.config(state=tk.DISABLED)
             self.stop_button.config(state=tk.DISABLED)
@@ -161,151 +180,130 @@ class ShoppingAssistantUI:
         except Exception as e:
             print(f"Error stopping recording: {e}")
 
-    def monitor_pages(self):
-        def wait_for_page_load():
-            try:
-                WebDriverWait(self.browser, 10).until(
-                    lambda driver: driver.execute_script("return document.readyState") == "complete"
-                )
-                return True
-            except Exception as e:
-                print(f"Error waiting for page load: {e}")
-                return False
+    def clear_cache(self):
+        """清理所有缓存文件和数据"""
+        try:
+            # 清理临时图片目录
+            temp_dir = "temp_images"
+            if os.path.exists(temp_dir):
+                import shutil
+                shutil.rmtree(temp_dir)
+                print("Cleared temporary images directory")
+            
+            # 重置缓存数据
+            self.product_cache.clear()
+            self.cached_urls.clear()
+            self.last_product_id = None
+            print("Cleared cache data")
+            
+        except Exception as e:
+            print(f"Error clearing cache: {e}")
 
-        last_url = None
-        current_handle = None
+    def monitor_pages(self):
+        """监控浏览器标签页，简化为只处理当前活动标签页"""
+        last_processed_url = None  # 添加URL处理标记
+        
         while self.recording:
             try:
                 # 检查浏览器是否还在运行
-                handles = self.browser.window_handles
-                if not handles:
-                    print("All browser windows closed. Stopping recording...")
+                if not self.browser.window_handles:
+                    print("Browser closed. Stopping recording...")
                     self.root.after(0, self.stop_recording)
                     break
 
-                # 获取当前活动标签页
-                try:
-                    new_handle = self.browser.current_window_handle
-                    if new_handle != current_handle:
-                        print(f"Switched to new tab: {new_handle}")
-                        current_handle = new_handle
-                        last_url = None  # 重置URL以强制检查新标签页
-                except:
-                    print("No active window handle found, waiting...")
-                    time.sleep(0.5)
-                    continue
-
-                # 获取当前标签页的URL
+                # 获取当前标签页
                 try:
                     current_url = self.browser.current_url
+                    # 如果URL没有变化，跳过处理
+                    if current_url == last_processed_url:
+                        time.sleep(0.3)
+                        continue
                 except:
-                    print("Could not get URL, retrying...")
                     time.sleep(0.5)
                     continue
 
-                # 只在URL改变或标签页切换时处理
-                if current_url != last_url:
-                    print(f"Processing URL in tab {current_handle}: {current_url}")
-                    last_url = current_url
+                # 处理不同类型的页面
+                if "detail.1688.com/offer" in current_url:
+                    # 产品详情页面
+                    product_id = self.extract_product_id(current_url)
+                    if product_id and product_id != self.last_product_id:
+                        print(f"New product detected: {product_id}")
+                        self.last_product_id = product_id
+                        if current_url not in self.cached_urls:
+                            self.cache_product_images()
+                    last_processed_url = current_url
 
-                    # 等待页面加载完成
-                    if wait_for_page_load():
-                        # 检查当前页面类型
-                        if "detail.1688.com/offer" in current_url:
-                            # 获取商品ID
-                            product_id = self.extract_product_id(current_url)
-                            if product_id:
-                                # 如果是新产品，清除之前的缓存
-                                if product_id != self.last_product_id:
-                                    print(f"New product detected in tab {current_handle}, clearing cache...")
-                                    self.product_cache.clear()
-                                    self.cached_urls.clear()
-                                    self.last_product_id = product_id
+                elif "order.1688.com/order/smart_make_order.htm" in current_url:
+                    # 订单页面
+                    if current_url != last_processed_url:  # 只在URL改变时处理
+                        print("Found order page, recording product info...")
+                        if self.last_product_id:
+                            self.record_product_info()
+                        else:
+                            print("No product ID found in cache")
+                    last_processed_url = current_url
 
-                                print(f"Found product page: {product_id}")
-                                # 只缓存图片
-                                self.cache_product_images()
-                            else:
-                                print(f"Invalid product ID in tab {current_handle}")
-
-                        elif "order.1688.com/order/smart_make_order.htm" in current_url:
-                            print(f"Found order page in tab {current_handle}, recording product info...")
-                            # 在购买页面记录产品信息
-                            if self.last_product_id:
-                                self.record_product_info()
-                            else:
-                                print("No product ID found in cache")
-
-                        elif "trade.1688.com/order/trade_flow.htm" in current_url:
-                            try:
-                                # 等待页面加载并检查是否包含"收银台"文字
-                                WebDriverWait(self.browser, 10).until(
-                                    lambda driver: "收银台" in driver.page_source
-                                )
-                                print(f"Found checkout page in tab {current_handle}, saving to database...")
-                                # 遍历所有规格的缓存记录
-                                saved_any = False
-                                for cache_key in list(self.product_cache.keys()):
-                                    if cache_key.startswith(self.last_product_id):
+                elif "trade.1688.com/order/trade_flow.htm" in current_url:
+                    # 收银台页面
+                    if "收银台" in self.browser.page_source and current_url != last_processed_url:
+                        print("Found checkout page, saving to database...")
+                        if self.last_product_id:
+                            # 遍历所有规格的缓存记录
+                            saved_count = 0
+                            for cache_key in list(self.product_cache.keys()):
+                                if cache_key.startswith(self.last_product_id) and '_' in cache_key:  # 确保是规格记录而不是图片缓存
+                                    try:
                                         if self.save_to_database(cache_key):
-                                            saved_any = True
-                                if not saved_any:
-                                    print("No valid product information found in cache")
-                            except Exception as e:
-                                print(f"Error checking checkout page: {e}")
+                                            saved_count += 1
+                                            print(f"Successfully saved specification {cache_key} to database")
+                                    except Exception as e:
+                                        print(f"Error saving specification {cache_key}: {e}")
+                            
+                            if saved_count == 0:
+                                print("No specifications were saved to database")
+                            else:
+                                print(f"Successfully saved {saved_count} specifications to database")
+                        last_processed_url = current_url
+
+                time.sleep(0.3)  # 降低CPU使用率
 
             except Exception as e:
-                if "no such window" in str(e):
-                    print(f"Lost tab {current_handle}, resetting...")
-                    current_handle = None
-                    last_url = None
-                    time.sleep(0.5)
-                else:
-                    print(f"Error in monitor loop: {e}")
-                    time.sleep(0.5)
-
-            time.sleep(0.5)
+                print(f"Error in monitor_pages: {e}")
+                time.sleep(0.5)
 
     def record_product_info(self):
+        """记录产品信息，处理所有选择的规格"""
         try:
             # 等待页面加载
             WebDriverWait(self.browser, 10).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "offer-link"))
             )
 
-            # 获取产品名称
+            # 获取产品名
             product_name = self.browser.find_element(By.CLASS_NAME, "offer-link").text.strip()
+            print(f"Recording info for product: {product_name}")
             
-            # 获取所有cargo-inner元素（每个代表一个产品规格组合）
+            # 获取所有cargo-inner元素
             cargo_inners = self.browser.find_elements(By.CLASS_NAME, "cargo-inner")
-            print(f"Found {len(cargo_inners)} cargo-inner elements")
+            print(f"Found {len(cargo_inners)} different specifications")
             
-            # 为每个规格组合处理信息
             if self.last_product_id:
-                # 获取原始图片信息
+                # 获取原图片信息
                 original_cache = self.product_cache.get(self.last_product_id, {})
                 image_urls = original_cache.get('images', [])
                 
-                # 如果有图片，为每个规格创建独立的图片目录
                 if image_urls:
-                    # 遍历每个cargo-inner
+                    # 遍历每个规格
                     for cargo_inner in cargo_inners:
                         try:
-                            # 获取价格 (直接从cargo-inner下获取)
+                            # 获取价格
                             price_element = cargo_inner.find_element(By.CLASS_NAME, "cargo-unit-price")
                             price = price_element.text.strip()
-                        except:
-                            print("Could not find price in cargo-inner")
-                            price = "N/A"
-                        
-                        try:
-                            # 获取cargo-info
+                            
+                            # 获取规格信息
                             cargo_info = cargo_inner.find_element(By.CLASS_NAME, "cargo-info")
-                            # 获取cargo-desc
                             cargo_desc = cargo_info.find_element(By.CLASS_NAME, "cargo-desc")
-                            # 获取cargo-spec
                             cargo_spec = cargo_desc.find_element(By.CLASS_NAME, "cargo-spec")
-                            # 获取规格项
                             spec_items = cargo_spec.find_elements(By.CLASS_NAME, "spec-item")
                             
                             # 收集规格信息
@@ -313,33 +311,34 @@ class ShoppingAssistantUI:
                             for item in spec_items:
                                 spec_text = item.text.strip()
                                 if spec_text:
-                                    # 移除末尾的分号
                                     spec_text = spec_text.rstrip(";")
                                     current_specs.append(spec_text)
                             
-                            # 如果找到规格，创建规格组合
-                            if current_specs:
-                                spec_combination = ";".join(current_specs)
-                            else:
-                                # 如果没有找到规格，使用默认规格
-                                spec_combination = "默认规格:默认"
+                            # 创建规格组合
+                            spec_combination = ";".join(current_specs) if current_specs else "默认���格:默认"
                             
                             # 创建缓存键
                             cache_key = f"{self.last_product_id}_{spec_combination}"
                             
-                            # 检查是否已存在相同规格的记录
+                            # 获取数量信息
+                            try:
+                                quantity_element = cargo_inner.find_element(By.CLASS_NAME, "amount-input")
+                                quantity = quantity_element.get_attribute("value")
+                            except:
+                                quantity = "1"
+                                print("Could not find quantity, using default value: 1")
+                            
                             if cache_key not in self.product_cache:
-                                # 为这个规格组合生成新的产品代码
-                                product_code = self.generate_unique_code()  # 现在返回整数
+                                product_code = self.generate_unique_code()
                                 
-                                # 为这个规格创建独立的图片目录
-                                spec_image_dir = os.path.join("product_images", str(product_code))  # 转换为字符串用于路径
+                                # 创建图片目录
+                                spec_image_dir = os.path.join("product_images", str(product_code))
                                 os.makedirs(spec_image_dir, exist_ok=True)
                                 
-                                # 从临时目录复制图片到规格特定的目录
+                                # 复制图片
                                 temp_dir = os.path.join("temp_images", self.last_product_id)
                                 copied_images = []
-                                for i in range(len(image_urls)):
+                                for i, url in enumerate(image_urls):
                                     temp_path = os.path.join(temp_dir, f"image_{i+1}.jpg")
                                     if os.path.exists(temp_path):
                                         spec_path = os.path.join(spec_image_dir, f"image_{i+1}.jpg")
@@ -351,14 +350,15 @@ class ShoppingAssistantUI:
                                     'name': product_name,
                                     'specs': spec_combination,
                                     'price': price,
-                                    'code': product_code,  # 存储为整数
+                                    'code': product_code,
+                                    'quantity': quantity,
                                     'images': image_urls
                                 }
-                                print(f"Recorded product info: {product_name}, {spec_combination}, {price}, {product_code}")
-                            else:
-                                print(f"Skipping duplicate specification: {spec_combination}")
+                                print(f"Recorded product info: {product_name}, {spec_combination}, {price}, Quantity: {quantity}, Code: {product_code}")
+                            
                         except Exception as e:
-                            print(f"Error processing cargo-inner element: {e}")
+                            print(f"Error processing specification: {e}")
+                            continue
                 else:
                     print("No images found in cache")
             else:
@@ -370,41 +370,39 @@ class ShoppingAssistantUI:
             print(traceback.format_exc())
 
     def save_to_database(self, cache_key):
+        """保存指定缓存键的产品信息到数据库"""
         try:
             if not cache_key or cache_key not in self.product_cache:
                 print(f"No product information to save for cache key: {cache_key}")
                 return False
             
-            # 检查是否是纯产品ID的缓存（只包含图片信息）
-            if cache_key == self.last_product_id:
-                print(f"Skipping image-only cache for product ID: {cache_key}")
-                return False
-            
             cache_data = self.product_cache[cache_key]
-            required_keys = ['name', 'specs', 'price', 'images', 'code']
+            required_keys = ['name', 'specs', 'price', 'images', 'code', 'quantity']
             
-            # 打印当前缓存数据的所有键
-            print(f"Cache data keys for {cache_key}: {list(cache_data.keys())}")
-            
-            # 检查每个必���的键
-            missing_keys = []
-            for key in required_keys:
-                if key not in cache_data:
-                    missing_keys.append(key)
-            
+            # 检查必需的键
+            missing_keys = [key for key in required_keys if key not in cache_data]
             if missing_keys:
                 print(f"Missing required keys in cache for {cache_key}: {missing_keys}")
                 return False
             
-            # 获取当前URL作为链接
-            current_url = self.browser.current_url
+            # 从缓存键中提取商品ID（修改这部分）
+            try:
+                product_id = cache_key.split('_')[0]  # 直接获取下划线前的部分作为商品ID
+                if not product_id or product_id == 'None':
+                    print(f"Invalid product ID in cache key: {cache_key}")
+                    return False
+                product_link = f"https://detail.1688.com/offer/{product_id}.html"
+                print(f"Generated product link: {product_link}")  # 添加日志
+            except Exception as e:
+                print(f"Error extracting product ID from cache key: {e}")
+                return False
             
             # 添加购买记录
             self.add_purchase_record(
-                current_url,
+                product_link,  # 使用商品详情页链接
                 f"{cache_data['name']} [{cache_data['specs']}]",
                 cache_data['price'],
-                "1",
+                cache_data['quantity'],
                 cache_data['images'],
                 cache_data['code']
             )
@@ -437,7 +435,7 @@ class ShoppingAssistantUI:
             except ValueError:
                 price = 0.00
             
-            # 获取规格信息
+            # ��取规格信息
             specs = []
             try:
                 spec_elements = driver.find_elements(By.CSS_SELECTOR, ".sku-name")
@@ -448,7 +446,7 @@ class ShoppingAssistantUI:
             except Exception as e:
                 print(f"Error getting specifications: {e}")
             
-            # 获取商品名称
+            # 获取商品名
             try:
                 name_element = driver.find_element(By.CSS_SELECTOR, ".product-title")
                 name = name_element.text.strip()
@@ -494,7 +492,7 @@ class ShoppingAssistantUI:
                 # 检查Excel文件中是否存在此Code
                 wb = openpyxl.load_workbook('products.xlsx')
                 ws = wb.active
-                codes = [int(str(ws.cell(row=row, column=5).value)) for row in range(2, ws.max_row + 1) if ws.cell(row=row, column=5).value is not None]  # 获取现有的代码并转换为整数
+                codes = [int(str(ws.cell(row=row, column=5).value)) for row in range(2, ws.max_row + 1) if ws.cell(row=row, column=5).value is not None]  # 获取现有的代码转换为整数
                 if new_code not in codes:
                     wb.close()
                     return new_code  # 返回整数
@@ -504,6 +502,47 @@ class ShoppingAssistantUI:
                 print(f"Error checking unique code: {e}")
                 wb.close()
                 continue
+
+    def download_image_with_retry(self, url, save_path, max_retries=3):
+        """下载图片并在失败时重试"""
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, timeout=10)
+                if response.status_code == 200:
+                    img_data = io.BytesIO(response.content)
+                    with Image.open(img_data) as img:
+                        width, height = img.size
+                        if width >= 100 and height >= 100:
+                            with open(save_path, 'wb') as f:
+                                f.write(response.content)
+                            return True
+                        else:
+                            print(f"Image too small: {width}x{height}")
+                            return False
+            except Exception as e:
+                print(f"Attempt {attempt + 1} failed for {url}: {e}")
+                if attempt == max_retries - 1:  # 如果是最后一次尝试
+                    if isinstance(e, requests.exceptions.SSLError):
+                        print("SSL Error occurred, refreshing page and trying one last time...")
+                        try:
+                            # ���新当前页面
+                            self.browser.refresh()
+                            time.sleep(2)  # 等待页面加载
+                            # 最后一次尝试
+                            response = requests.get(url, timeout=10)
+                            if response.status_code == 200:
+                                img_data = io.BytesIO(response.content)
+                                with Image.open(img_data) as img:
+                                    width, height = img.size
+                                    if width >= 100 and height >= 100:
+                                        with open(save_path, 'wb') as f:
+                                            f.write(response.content)
+                                        return True
+                        except Exception as final_e:
+                            print(f"Final attempt after refresh failed: {final_e}")
+                            return False
+                time.sleep(1)  # 在重试之间等待1秒
+        return False
 
     def cache_product_images(self):
         """缓存当前标签页中的产品图片"""
@@ -517,27 +556,44 @@ class ShoppingAssistantUI:
                 return
 
             print(f"Caching images for product {product_id} in current tab")
-            image_urls = []
             
-            # 方法1：尝试获取od-gallery-turn-item-wrapper中的图片
-            try:
-                WebDriverWait(self.browser, 10).until(
-                    EC.presence_of_element_located((By.CLASS_NAME, "od-gallery-turn-item-wrapper"))
-                )
-                image_containers = self.browser.find_elements(By.CLASS_NAME, "od-gallery-turn-item-wrapper")
-                if image_containers:
-                    # 只取前6张图片
-                    for container in image_containers[:6]:
-                        img_element = container.find_element(By.CLASS_NAME, "od-gallery-img")
-                        img_url = img_element.get_attribute("src")
-                        if img_url and self.check_image_size(img_url):
-                            image_urls.append(img_url)
-            except Exception as e:
-                print(f"Method 1 failed: {e}")
-
-            # 方法2：如果方法1没有找到图片，尝试获取detail-gallery-turn-wrapper中的图片
-            if not image_urls:
+            # 创建队列用于存储找到的图片URL
+            from queue import Queue
+            image_queue = Queue()
+            
+            # 创建事件用于控制线程终止
+            found_images = threading.Event()
+            
+            def method1():
+                """方法1：获取od-gallery-turn-item-wrapper中的图片"""
                 try:
+                    if found_images.is_set():  # 如果另一个方法已经找到图片，直接返回
+                        return
+                    
+                    WebDriverWait(self.browser, 10).until(
+                        EC.presence_of_element_located((By.CLASS_NAME, "od-gallery-turn-item-wrapper"))
+                    )
+                    image_containers = self.browser.find_elements(By.CLASS_NAME, "od-gallery-turn-item-wrapper")
+                    if image_containers:
+                        for container in image_containers[:6]:
+                            if found_images.is_set():  # 检查是否需要终止
+                                break
+                            img_element = container.find_element(By.CLASS_NAME, "od-gallery-img")
+                            img_url = img_element.get_attribute("src")
+                            if img_url and self.check_image_size(img_url):
+                                image_queue.put(img_url)
+                        if image_queue.qsize() > 0:
+                            found_images.set()  # 设置事件，通知另一个线程
+                            print("Method 1 found images")
+                except Exception as e:
+                    print(f"Method 1 failed: {e}")
+
+            def method2():
+                """方法2：获取detail-gallery-turn-wrapper中的图片"""
+                try:
+                    if found_images.is_set():  # 如果另一个方法已经找到图片，直接返回
+                        return
+                    
                     WebDriverWait(self.browser, 10).until(
                         EC.presence_of_element_located((By.CLASS_NAME, "detail-gallery-turn-wrapper"))
                     )
@@ -546,18 +602,45 @@ class ShoppingAssistantUI:
                     print(f"Found {len(image_containers)} detail-gallery-turn-wrapper elements")
                     
                     for container in image_containers[:6]:
+                        if found_images.is_set():  # 检查是否需要终止
+                            break
                         try:
                             img_element = container.find_element(By.TAG_NAME, "img")
                             img_url = img_element.get_attribute("src")
-                            if img_url and img_url not in image_urls and self.check_image_size(img_url):
-                                image_urls.append(img_url)
+                            if img_url and self.check_image_size(img_url):
+                                image_queue.put(img_url)
                                 print(f"Found image URL: {img_url}")
                         except Exception as e:
                             print(f"Error processing image container: {e}")
                             continue
                     
+                    if image_queue.qsize() > 0:
+                        found_images.set()  # 设置事件，通知另一个线程
+                        print("Method 2 found images")
+                    
                 except Exception as e:
                     print(f"Method 2 failed: {e}")
+
+            # 创建并启动两个线程
+            thread1 = threading.Thread(target=method1, daemon=True)
+            thread2 = threading.Thread(target=method2, daemon=True)
+            
+            thread1.start()
+            thread2.start()
+            
+            # 等待任一线程找到图片或超时
+            found_images.wait(timeout=10)
+            
+            # 从队列中获取所有图片URL
+            image_urls = []
+            seen_urls = set()  # 用于去重
+            while not image_queue.empty():
+                url = image_queue.get()
+                if url not in seen_urls:
+                    image_urls.append(url)
+                    seen_urls.add(url)
+                    if len(image_urls) >= 6:  # 最多取6张图片
+                        break
 
             if not image_urls:
                 print("No valid images found in current tab")
@@ -575,22 +658,31 @@ class ShoppingAssistantUI:
             temp_dir = os.path.join("temp_images", product_id)
             os.makedirs(temp_dir, exist_ok=True)
             
-            for i, url in enumerate(image_urls):
-                try:
-                    response = requests.get(url)
-                    if response.status_code == 200:
-                        img_data = io.BytesIO(response.content)
-                        with Image.open(img_data) as img:
-                            width, height = img.size
-                            if width >= 100 and height >= 100:
-                                img_path = os.path.join(temp_dir, f"image_{i+1}.jpg")
-                                with open(img_path, 'wb') as f:
-                                    f.write(response.content)
-                                print(f"Saved image {i+1} for product {product_id}")
-                            else:
-                                print(f"Skipped small image {i+1}")
-                except Exception as e:
-                    print(f"Error downloading image {url}: {e}")
+            # 使用线程池并行下载图片
+            from concurrent.futures import ThreadPoolExecutor
+            
+            def download_image(args):
+                i, url = args
+                img_path = os.path.join(temp_dir, f"image_{i+1}.jpg")
+                if self.download_image_with_retry(url, img_path):
+                    print(f"Successfully downloaded image {i+1} for product {product_id}")
+                    return url
+                print(f"Failed to download image {i+1} after all retries")
+                return None
+            
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                successful_downloads = list(filter(None, executor.map(
+                    download_image, 
+                    enumerate(image_urls)
+                )))
+
+            # 更新缓存中的图片列表，只保留成功下载的图片URL
+            if successful_downloads:
+                self.product_cache[product_id]['images'] = successful_downloads
+            else:
+                print("No images were successfully downloaded")
+                self.product_cache.pop(product_id, None)
+                self.cached_urls.remove(current_url)
 
         except Exception as e:
             print(f"Error caching product images: {e}")
@@ -598,7 +690,7 @@ class ShoppingAssistantUI:
             print(traceback.format_exc())
 
     def check_image_size(self, url):
-        """检查图片尺寸是否符合要求"""
+        """检查图片尺寸否符合要求"""
         try:
             response = requests.get(url)
             if response.status_code == 200:
@@ -618,7 +710,7 @@ class ShoppingAssistantUI:
 
     def extract_1688_info(self):
         try:
-            # 加明确的等待时间
+            # 加确的等待时间
             time.sleep(2)
             
             # 等待页面全加载
@@ -626,7 +718,7 @@ class ShoppingAssistantUI:
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
 
-            # 获取当前页面URL作为链接
+            # 取当前页面URL作为链接
             current_url = self.browser.current_url
 
             # 获取产品链接和名称
@@ -674,7 +766,7 @@ class ShoppingAssistantUI:
             # 获取规格信息
             try:
                 if "trade.1688.com/order/trade_flow.htm" in current_url:
-                    # 在收银台页面获取规格
+                    # 在收银台页面取规格
                     spec_items = self.browser.find_elements(By.CLASS_NAME, "order-item-sku")
                     specs = []
                     for item in spec_items:
@@ -682,7 +774,7 @@ class ShoppingAssistantUI:
                         if spec_text:
                             specs.append(spec_text)
                 else:
-                    # 原有的产品页面规格获取逻辑
+                    # 原有产品��面规格获取逻辑
                     spec_items = self.browser.find_elements(By.CLASS_NAME, "spec-item")
                     specs = []
                     for item in spec_items:
@@ -713,12 +805,12 @@ class ShoppingAssistantUI:
                     cache_data['specs'] = specs_str  # 添加规格信息
                     cache_data['timestamp'] = datetime.now()
                     
-                    # 添加购买记录，使用完整URL作为链接
+                    # 添加购买记录，使用完整URL为链接
                     # 将产品名称和规格组合在一起
                     full_product_name = f"{product_name} [{specs_str}]" if specs_str else product_name
                     self.add_purchase_record(current_url, full_product_name, price, "1", image_urls, product_code)
                     
-                    # 标记为已处理
+                    # 标记为处理
                     self.processed_products.add(product_id)
                     
                     print(f"Successfully recorded purchase: {full_product_name} with code {product_code}")
@@ -778,22 +870,30 @@ class ShoppingAssistantUI:
         
         # 处理价格格式
         try:
-            # 移除价格中的货币符号和空格
-            price_str = str(price).replace("￥", "").replace("¥", "").strip()
-            # 如果价格包含范围（例如：12.00-15.00），取第一个价格
-            if "-" in price_str:
-                price_str = price_str.split("-")[0]
-            # 确保价格是数字格式
-            price_float = float(price_str)
+            # 移除所有非数字和小数点的字符
+            price_str = ''.join(char for char in str(price) if char.isdigit() or char == '.')
+            
+            # 如果字符串为空或只包含小数点，设置为0
+            if not price_str or price_str == '.':
+                price_float = 0.0
+            else:
+                # 如果有多个小数点，只保留第一个
+                if price_str.count('.') > 1:
+                    parts = price_str.split('.')
+                    price_str = parts[0] + '.' + ''.join(parts[1:])
+                
+                # 转换为浮点数
+                price_float = float(price_str)
+                
             # 格式化价格显示（用于UI显示）
             formatted_price = f"¥{price_float:.2f}"
             # 数据库中存储数字
             db_price = price_float
         except:
-            formatted_price = str(price)
+            formatted_price = "¥0.00"
             db_price = 0.0
             
-        # 处理数量格式
+        # ��理数量格式
         try:
             quantity_int = int(str(quantity).strip())
         except:
@@ -830,7 +930,7 @@ class ShoppingAssistantUI:
                 save_dir = os.path.join("product_images", str(product_code))  # 转换为字符串用于路径
                 os.makedirs(save_dir, exist_ok=True)
                 
-                # 下载并保存原始图片
+                # 下载并保��原始图片
                 saved_images = []
                 temp_files = []  # 用于跟踪临时文件
                 
@@ -861,7 +961,7 @@ class ShoppingAssistantUI:
                     "AddedDate": datetime.now().strftime("%Y-%m-%d")
                 }
 
-                # 读取或创建Excel��件
+                # 读取或创建Excel文件
                 try:
                     wb = openpyxl.load_workbook('products.xlsx')
                     ws = wb.active
@@ -913,13 +1013,13 @@ class ShoppingAssistantUI:
                         cell.number_format = '#,##0.00'
                     elif col == 5:  # Code列
                         cell.number_format = '0'
-                    elif col == 7:  # StockQuantity列
+                    elif col == 7:  # StockQuantity
                         cell.number_format = '0'
 
                 # 调整行以适应图片
-                ws.row_dimensions[product_row].height = 150  # 增加行高以适应多图片
+                ws.row_dimensions[product_row].height = 150  # 增加行以适应多图片
 
-                # 添加图片到Excel（缩略图）
+                # 添加图片到Excel（略图）
                 for i, img_data in enumerate(saved_images):
                     if i >= 6:  # 最多显示6张图片
                         break
@@ -928,15 +1028,15 @@ class ShoppingAssistantUI:
                         img = Image.open(io.BytesIO(img_data))
                         # 调整片大小用于Excel显示
                         img.thumbnail((100, 100))
-                        # 保存调整后的图片到临时文件
+                        # 保存调整后的图片临时文件
                         temp_path = os.path.join(save_dir, f"temp_img_{product_row}_{i}.png")
                         img.save(temp_path)
                         temp_files.append(temp_path)
                         # 创建Excel图片对
                         xl_img = XLImage(temp_path)
-                        # 计算图片位置（从第9列开始放置图片，因为添加了Specs列）
+                        # 计算图片位置（从第9列开始放置图片，因为添加了Specs）
                         col_letter = openpyxl.utils.get_column_letter(9 + i)
-                        # 添加图片到单元格
+                        # 添加片到单元格
                         ws.add_image(xl_img, f"{col_letter}{product_row}")
                     except Exception as e:
                         print(f"Error adding image {i+1} to Excel: {e}")
@@ -944,7 +1044,7 @@ class ShoppingAssistantUI:
                 try:
                     # 保存Excel文件
                     wb.save('products.xlsx')
-                    wb.close()  # 确保闭工作簿
+                    wb.close()  # 确保闭工簿
                     break  # 如果成功保存，跳出重试循环
                 except PermissionError:
                     retry_count += 1
@@ -986,3 +1086,47 @@ class ShoppingAssistantUI:
             self.root.destroy()
         import main
         main.ProductManager()
+
+    def inject_js_code(self):
+        """注入JavaScript代码以制链接行为"""
+        try:
+            self.browser.execute_script("""
+                // 覆盖window.open方法
+                window.open = function(url, target, features) {
+                    if (url) {
+                        window.location.href = url;
+                        return window;
+                    }
+                    return null;
+                };
+                
+                // 修改所有链接的target属性
+                function modifyLinks() {
+                    document.querySelectorAll('a').forEach(function(link) {
+                        link.target = '_self';
+                        link.addEventListener('click', function(e) {
+                            if (this.href && !this.href.startsWith('javascript:')) {
+                                e.preventDefault();
+                                window.location.href = this.href;
+                            }
+                        });
+                    });
+                }
+                
+                // 立即执行一次
+                modifyLinks();
+                
+                // 创建观察器以处理动态添加的链接
+                var observer = new MutationObserver(function(mutations) {
+                    modifyLinks();
+                });
+                
+                // 开始观察整个档的变化
+                observer.observe(document.documentElement, {
+                    childList: true,
+                    subtree: true
+                });
+            """)
+            print("Successfully injected JavaScript code")
+        except Exception as e:
+            print(f"Error injecting JavaScript code: {e}")
