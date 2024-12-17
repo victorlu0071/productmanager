@@ -7,3 +7,7 @@ chrome_user_data/
 # 为了更完整的覆盖，也可以包含这些变体
 *chrome_user_data*/
 *Chrome_User_Data*/
+
+# Excel files
+products.xlsx
+dist/products.xlsx
