@@ -11,3 +11,5 @@ chrome_user_data/
 # Excel files
 products.xlsx
 dist/products.xlsx
+product_images/
+
