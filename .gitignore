@@ -1,0 +1,9 @@
+# Chrome user data
+chrome_user_data/
+**/chrome_user_data/
+**/Chrome User Data/
+**/Chrome_User_Data/
+
+# 为了更完整的覆盖，也可以包含这些变体
+*chrome_user_data*/
+*Chrome_User_Data*/

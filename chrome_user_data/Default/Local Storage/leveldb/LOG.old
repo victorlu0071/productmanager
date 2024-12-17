@@ -1,6 +1,0 @@
-2024/12/16-22:44:09.732 6b53c Reusing MANIFEST D:\DEV SPACE\productmanager\chrome_user_data\Default\Local Storage\leveldb/MANIFEST-000001
-2024/12/16-22:44:09.735 6b53c Recovering log #196
-2024/12/16-22:44:09.738 6b53c Reusing old log D:\DEV SPACE\productmanager\chrome_user_data\Default\Local Storage\leveldb/000196.log 
-2024/12/16-22:44:18.993 6b53c Level-0 table #201: started
-2024/12/16-22:44:18.997 6b53c Level-0 table #201: 31944 bytes OK
-2024/12/16-22:44:18.999 6b53c Delete type=0 #196
