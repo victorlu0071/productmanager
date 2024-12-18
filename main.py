@@ -1,23 +1,63 @@
 import tkinter as tk
-from file_operations import load_products, save_products
+from tkinter import ttk
 from product_management_ui import ProductManagerUI
 from stock_management_ui import StockManagerUI
-from datetime import datetime, timedelta
-import os
+from file_operations import load_products, save_products
 
 class ProductManager:
     def __init__(self):
         self.file_path = "products.xlsx"
         self.products, self.product_dict = load_products(self.file_path)
         self.root = None
+        self.setup_styles()  # 设置样式
         self.init_gui()
 
+    def setup_styles(self):
+        """设置UI样式"""
+        # 定义颜色
+        self.colors = {
+            'primary': '#2196F3',  # 主色调
+            'secondary': '#64B5F6',  # 次要色调
+            'success': '#4CAF50',  # 成功色
+            'warning': '#FFC107',  # 警告色
+            'error': '#F44336',  # 错误色
+            'background': '#F5F5F5',  # 背景色
+            'text': '#212121',  # 文本色
+            'light_text': '#757575'  # 浅色文本
+        }
+
+        # 创建自定义样式
+        style = ttk.Style()
+        style.theme_use('clam')
+
+        # 配置主按钮样式
+        style.configure("Main.TButton",
+            background=self.colors['primary'],
+            foreground="white",
+            padding=(20, 100),  # 大幅增加按钮高度
+            font=('Microsoft YaHei UI', 24, 'bold'))  # 增加字体大小
+        
+        style.map("Main.TButton",
+            background=[('active', self.colors['secondary'])])
+
+        # 配置退出按钮样式
+        style.configure("Exit.TButton",
+            background=self.colors['error'],
+            foreground="white",
+            padding=(50, 30),  # 适当增加退出按钮高度
+            font=('Microsoft YaHei UI', 16))  # 增加退出按钮字体大小
+        
+        style.map("Exit.TButton",
+            background=[('active', '#E57373')])  # 浅红色
 
     def init_gui(self):
         self.root = tk.Tk()
-        self.root.title("Main Menu")
+        self.root.title("库存管理系统")
+        
+        # 设置窗口样式
+        self.root.configure(bg=self.colors['background'])
 
-        # Center the window
+        # 设置窗口大小和位置
         window_width = 1080
         window_height = 700
         screen_width = self.root.winfo_screenwidth()
@@ -26,22 +66,56 @@ class ProductManager:
         position_left = int((screen_width - window_width) / 2)
         self.root.geometry(f"{window_width}x{window_height}+{position_left}+{position_top}")
 
-        # Create a frame for button layout
-        button_frame = tk.Frame(self.root)
-        button_frame.pack(expand=True)
+        # 创建主框架
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(expand=True, fill=tk.BOTH, padx=40, pady=40)
+        
+        # 使主框架可以调整大小
+        main_frame.grid_columnconfigure(0, weight=1)
+        main_frame.grid_rowconfigure(1, weight=1)
 
-        button1 = tk.Button(button_frame, text="Product Management", command=self.open_product_manager, font=("Helvetica", 14), width=20, height=2)
-        button1.pack(side=tk.LEFT, padx=50)
+        # 创建标题标签
+        title_label = ttk.Label(main_frame, 
+                              text="欢迎使用库存管理系统",
+                              font=('Microsoft YaHei UI', 32, 'bold'),
+                              foreground=self.colors['primary'])
+        title_label.pack(pady=(0, 40))
 
-        button2 = tk.Button(button_frame, text="Stock Management", command=self.open_stock_manager, font=("Helvetica", 14), width=20, height=2)
-        button2.pack(side=tk.LEFT, padx=50)
+        # 创建按钮框架
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.BOTH, expand=True, padx=10)
+        
+        # 配置按钮框架的行和列权重
+        button_frame.grid_columnconfigure(0, weight=1)
+        button_frame.grid_columnconfigure(1, weight=1)
+        button_frame.grid_columnconfigure(2, weight=1)
+        button_frame.grid_rowconfigure(0, weight=1)  # 添加行权重以允许垂直拉伸
 
-        button3 = tk.Button(button_frame, text="Shopping Assistant", command=self.open_shopping_assistant, font=("Helvetica", 14), width=20, height=2)
-        button3.pack(side=tk.LEFT, padx=50)
+        # 主功能按钮
+        button1 = ttk.Button(button_frame, 
+                           text="产品管理", 
+                           command=self.open_product_manager,
+                           style="Main.TButton")
+        button1.grid(row=0, column=0, sticky="nsew", padx=5, ipady=80)  # 添加ipady来增加按钮高度
 
-        # Add exit button
-        exit_button = tk.Button(self.root, text="Exit", command=self.exit_program, font=("Helvetica", 14), width=20, height=2)
-        exit_button.pack(pady=20)
+        button2 = ttk.Button(button_frame, 
+                           text="库存管理", 
+                           command=self.open_stock_manager,
+                           style="Main.TButton")
+        button2.grid(row=0, column=1, sticky="nsew", padx=5, ipady=80)  # 添加ipady来增加按钮高度
+
+        button3 = ttk.Button(button_frame, 
+                           text="采购助手", 
+                           command=self.open_shopping_assistant,
+                           style="Main.TButton")
+        button3.grid(row=0, column=2, sticky="nsew", padx=5, ipady=80)  # 添加ipady来增加按钮高度
+
+        # 退出按钮
+        exit_button = ttk.Button(main_frame, 
+                               text="退出系统", 
+                               command=self.exit_program,
+                               style="Exit.TButton")
+        exit_button.pack(pady=40)
 
         self.root.mainloop()
 
@@ -52,17 +126,17 @@ class ProductManager:
 
     def open_product_manager(self):
         if self.root:
-            self.root.destroy()
+            self.root.withdraw()  # 隐藏主窗口而不是销毁
         ProductManagerUI(self.products, None)
 
     def open_stock_manager(self):
         if self.root:
-            self.root.destroy()
+            self.root.withdraw()  # 隐藏主窗口而不是销毁
         StockManagerUI(self.products, self.product_dict, lambda: save_products(self.file_path, self.products))
 
     def open_shopping_assistant(self):
         if self.root:
-            self.root.destroy()
+            self.root.withdraw()  # 隐藏主窗口而不是销毁
         from shopping_assistant_ui import ShoppingAssistantUI
         ShoppingAssistantUI()
 

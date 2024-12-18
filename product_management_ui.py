@@ -9,7 +9,7 @@ from threading import Thread
 from PIL import Image, ImageTk
 import io
 import os
-import gc  # 添加gc模块导入
+import gc
 import shutil
 import threading
 
@@ -22,14 +22,219 @@ class ProductManagerUI:
         self.current_product = {}
         self.filtered_products = []
         self.pasteboard_monitoring = False
-        self.is_running = True  # 添加运行状态标志
-        self.monitor_thread = None  # 添加线程引用
-        self.root = tk.Tk()
-        self.init_gui()  # 先初始化GUI
-        self.load_products()  # 然后加载产品
+        self.is_running = True
+        self.monitor_thread = None
+        self.root = tk.Toplevel()
+        self.setup_styles()  # 设置样式
+        self.init_gui()
+        self.load_products()
         self.filtered_products = self.products.copy()
-        # 启动定时检查剪贴板更新
         self.check_clipboard_updates()
+
+    def setup_styles(self):
+        """设置UI样式"""
+        # 定义颜色
+        self.colors = {
+            'primary': '#2196F3',  # 主色调
+            'secondary': '#64B5F6',  # 次要色调
+            'success': '#4CAF50',  # 成功色
+            'warning': '#FFC107',  # 警告色
+            'error': '#F44336',  # 错误色
+            'background': '#F5F5F5',  # 背景色
+            'text': '#212121',  # 文本色
+            'light_text': '#757575'  # 浅色文本
+        }
+
+        # 创建自定义样式
+        style = ttk.Style()
+        style.theme_use('clam')
+
+        # 配置Treeview样式
+        style.configure("Treeview",
+            background=self.colors['background'],
+            foreground=self.colors['text'],
+            fieldbackground=self.colors['background'],
+            rowheight=30,
+            font=('Microsoft YaHei UI', 10))
+        
+        style.configure("Treeview.Heading",
+            background=self.colors['primary'],
+            foreground="white",
+            relief="flat",
+            font=('Microsoft YaHei UI', 10, 'bold'))
+        
+        style.map("Treeview.Heading",
+            background=[('active', self.colors['secondary'])])
+
+        # 配置按钮样式
+        style.configure("Primary.TButton",
+            background=self.colors['primary'],
+            foreground="white",
+            padding=(20, 10),
+            font=('Microsoft YaHei UI', 10))
+        
+        style.map("Primary.TButton",
+            background=[('active', self.colors['secondary'])])
+
+        # 配置危险按钮样式
+        style.configure("Danger.TButton",
+            background=self.colors['error'],
+            foreground="white",
+            padding=(20, 10),
+            font=('Microsoft YaHei UI', 10))
+        
+        style.map("Danger.TButton",
+            background=[('active', '#E57373')])
+
+        # 配置标签样式
+        style.configure("Info.TLabel",
+            background=self.colors['background'],
+            foreground=self.colors['text'],
+            font=('Microsoft YaHei UI', 10))
+
+        # 配置输入框样式
+        style.configure("Custom.TEntry",
+            fieldbackground="white",
+            padding=(5, 5))
+
+    def init_gui(self):
+        self.root.title("产品管理系统")
+        self.root.protocol("WM_DELETE_WINDOW", self.return_to_main_menu)
+        
+        # 设置窗口样式
+        self.root.configure(bg=self.colors['background'])
+        
+        window_width = 1080
+        window_height = 700
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        position_top = int((screen_height - window_height) / 2)
+        position_left = int((screen_width - window_width) / 2)
+        self.root.geometry(f"{window_width}x{window_height}+{position_left}+{position_top}")
+
+        # 创建主框架
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        # 搜索区域
+        search_frame = ttk.Frame(main_frame)
+        search_frame.pack(fill=tk.X, pady=(0, 10))
+
+        self.search_label = ttk.Label(search_frame, 
+                                    text="搜索产品:",
+                                    style="Info.TLabel")
+        self.search_label.pack(side=tk.LEFT, padx=5)
+        
+        self.search_entry = ttk.Entry(search_frame, 
+                                    width=50,
+                                    style="Custom.TEntry",
+                                    font=('Microsoft YaHei UI', 10))
+        self.search_entry.pack(side=tk.LEFT, padx=5)
+        self.search_entry.bind('<Return>', self.handle_search)
+        self.search_entry.bind("<FocusIn>", self.stop_pasteboard_monitoring)
+        self.search_entry.bind("<FocusOut>", self.start_pasteboard_monitoring)
+
+        # Treeview区域
+        tree_frame = ttk.Frame(main_frame)
+        tree_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+
+        # 创建Treeview的滚动条
+        tree_scroll = ttk.Scrollbar(tree_frame)
+        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Treeview
+        columns = ("Name", "Specs", "Cost", "Link", "Code", "LocationCode", "StockQuantity", "AddedDate")
+        self.tree = ttk.Treeview(tree_frame, 
+                                columns=columns, 
+                                show='headings',
+                                style="Treeview",
+                                yscrollcommand=tree_scroll.set)
+        
+        tree_scroll.config(command=self.tree.yview)
+        
+        # 设置列宽和对齐方式
+        column_widths = {
+            "Name": 200,
+            "Specs": 150,
+            "Cost": 100,
+            "Link": 200,
+            "Code": 100,
+            "LocationCode": 100,
+            "StockQuantity": 100,
+            "AddedDate": 100
+        }
+
+        # 设置中文表头
+        column_headers = {
+            "Name": "产品名称",
+            "Specs": "规格",
+            "Cost": "成本",
+            "Link": "链接",
+            "Code": "商品代码",
+            "LocationCode": "库位码",
+            "StockQuantity": "库存数量",
+            "AddedDate": "添加日期"
+        }
+
+        for col in columns:
+            self.tree.heading(col, text=column_headers[col])
+            self.tree.column(col, width=column_widths[col], anchor='center')
+
+        self.tree.pack(fill=tk.BOTH, expand=True)
+        self.tree.bind('<Double-1>', self.on_item_double_click)
+
+        # 按钮区域
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=10)
+
+        clear_button = ttk.Button(button_frame, 
+                                text="清空数据库", 
+                                style="Danger.TButton",
+                                command=self.clear_database)
+        clear_button.pack(side=tk.LEFT, padx=5)
+
+        delete_button = ttk.Button(button_frame, 
+                                 text="删除选中项", 
+                                 style="Danger.TButton",
+                                 command=self.delete_selected_entries)
+        delete_button.pack(side=tk.LEFT, padx=5)
+
+        fix_code_button = ttk.Button(button_frame,
+                                   text="修复商品代码",
+                                   style="Primary.TButton",
+                                   command=self.fix_missing_codes)
+        fix_code_button.pack(side=tk.LEFT, padx=5)
+
+        back_button = ttk.Button(button_frame, 
+                               text="返回主菜单", 
+                               style="Primary.TButton",
+                               command=self.return_to_main_menu)
+        back_button.pack(side=tk.LEFT, padx=5)
+
+        # 输入区域
+        input_frame = ttk.Frame(main_frame)
+        input_frame.pack(fill=tk.X, pady=10)
+
+        self.entry_label = ttk.Label(input_frame, 
+                                   text="请输入产品名称:",
+                                   style="Info.TLabel")
+        self.entry_label.pack(pady=5)
+
+        self.entry_field = ttk.Entry(input_frame, 
+                                   width=50,
+                                   style="Custom.TEntry",
+                                   font=('Microsoft YaHei UI', 10))
+        self.entry_field.pack(pady=5)
+        self.entry_field.bind('<Return>', self.handle_entry)
+        self.entry_field.bind("<FocusIn>", self.stop_pasteboard_monitoring)
+        self.entry_field.bind("<FocusOut>", self.start_pasteboard_monitoring)
+
+        # 状态标签
+        self.status_label = ttk.Label(main_frame, 
+                                    text="",
+                                    style="Info.TLabel",
+                                    wraplength=window_width-40)
+        self.status_label.pack(fill=tk.X, pady=5)
 
     def load_products(self):
         try:
@@ -117,16 +322,16 @@ class ProductManagerUI:
                     product.get("Specs", ""),
                     product.get("Cost", ""),
                     product.get("Link", ""),
-                    product.get("Code", ""),
-                    product.get("LocationCode", ""),  # LocationCode 保持为字符串
-                    product.get("StockQuantity", 0),  # 确保StockQuantity有默认值
+                    product.get("Code", 0),  # 确保Code有默认值0
+                    product.get("LocationCode", ""),
+                    product.get("StockQuantity", 0),
                     product.get("AddedDate", "")
                 ]
                 
                 for col, value in enumerate(values, 1):
                     cell = ws.cell(row=row, column=col)
-                    cell.value = value
-                    # 设置特殊列的格式
+                    
+                    # 根据列类型设置单元格格式和值
                     if col == 3:  # Cost列
                         if isinstance(value, str) and value.startswith('¥'):
                             try:
@@ -136,28 +341,36 @@ class ProductManagerUI:
                         cell.number_format = '#,##0.00'
                     elif col == 5:  # Code列
                         try:
-                            cell.value = int(str(value))
-                        except (ValueError, TypeError):
+                            # 确保Code是整数
+                            if isinstance(value, int):
+                                cell.value = value
+                            elif isinstance(value, str) and value.strip():
+                                cell.value = int(float(value))
+                            else:
+                                cell.value = 0
+                        except (ValueError, TypeError) as e:
+                            print(f"Code转换错误: {e}, 使用默认值0")
                             cell.value = 0
                         cell.number_format = '0'
                     elif col == 7:  # StockQuantity列
                         try:
-                            cell.value = int(float(str(value)))
+                            cell.value = int(float(str(value))) if value else 0
                         except (ValueError, TypeError):
                             cell.value = 0
                         cell.number_format = '0'
                     elif col == 6:  # LocationCode列
-                        # LocationCode 保持为文本格式
-                        cell.number_format = '@'
+                        cell.value = str(value)
+                        cell.number_format = '@'  # 文本格式
+                    else:
+                        cell.value = str(value)
                 
                 # 设置行高以适应图片
                 ws.row_dimensions[row].height = 150
                 
                 # 处理图片
                 try:
-                    product_code = product.get("Code", "")
+                    product_code = product.get("Code", 0)  # 使用默认值0
                     if product_code:
-                        # 确保product_code是字符串
                         img_dir = os.path.join("product_images", str(product_code))
                         if os.path.exists(img_dir):
                             for i, img_file in enumerate(sorted(os.listdir(img_dir))):
@@ -172,7 +385,7 @@ class ProductManagerUI:
                                             img.save(temp_path)
                                             temp_files.append(temp_path)
                                             xl_img = openpyxl.drawing.image.Image(temp_path)
-                                            col_letter = openpyxl.utils.get_column_letter(9 + i)  # 从第9列开始放置图片
+                                            col_letter = openpyxl.utils.get_column_letter(9 + i)
                                             xl_img.anchor = f"{col_letter}{row}"
                                             ws.add_image(xl_img)
                                     except Exception as e:
@@ -188,10 +401,12 @@ class ProductManagerUI:
             
             # 保存文件
             wb.save(self.file_path)
+            return True
             
         except Exception as e:
             print(f"Error saving to Excel: {e}")
             messagebox.showerror("Error", f"Failed to save data: {str(e)}")
+            return False
         finally:
             if wb:
                 wb.close()
@@ -205,68 +420,6 @@ class ProductManagerUI:
                     print(f"Error deleting temp file {temp_file}: {e}")
             
             gc.collect()
-
-    def init_gui(self):
-        self.root.title("Product Management")
-        self.root.protocol("WM_DELETE_WINDOW", self.return_to_main_menu)
-        
-        window_width = 1080
-        window_height = 700
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        position_top = int((screen_height - window_height) / 2)
-        position_left = int((screen_width - window_width) / 2)
-        self.root.geometry(f"{window_width}x{window_height}+{position_left}+{position_top}")
-        
-        # 搜索栏
-        self.search_label = tk.Label(self.root, text="Search Product:")
-        self.search_label.pack(pady=5)
-        
-        self.search_entry = tk.Entry(self.root, width=50)
-        self.search_entry.pack(pady=5)
-        self.search_entry.bind('<Return>', self.handle_search)
-        self.search_entry.bind("<FocusIn>", self.stop_pasteboard_monitoring)
-        self.search_entry.bind("<FocusOut>", self.start_pasteboard_monitoring)
-        
-        # Treeview
-        columns = ("Name", "Specs", "Cost", "Link", "Code", "LocationCode", "StockQuantity", "AddedDate")
-        self.tree = ttk.Treeview(self.root, columns=columns, show='headings')
-        
-        # 设置列宽和对齐方式
-        for col in columns:
-            self.tree.heading(col, text=col)
-            width = 150 if col in ["Name", "Specs", "Link"] else 100
-            self.tree.column(col, width=width, anchor='center')
-        
-        self.tree.pack(fill=tk.BOTH, expand=True)
-        self.tree.bind('<Double-1>', self.on_item_double_click)
-        
-        # 按钮区域
-        button_frame = tk.Frame(self.root)
-        button_frame.pack(pady=10)
-        
-        clear_button = tk.Button(button_frame, text="Clear Database", command=self.clear_database)
-        clear_button.pack(side=tk.LEFT, padx=5)
-        
-        delete_button = tk.Button(button_frame, text="Delete Selected Entries", command=self.delete_selected_entries)
-        delete_button.pack(side=tk.LEFT, padx=5)
-        
-        back_button = tk.Button(button_frame, text="Back", command=self.return_to_main_menu)
-        back_button.pack(side=tk.LEFT, padx=5)
-        
-        # 状态标签
-        self.status_label = tk.Label(self.root, text="", anchor="w")
-        self.status_label.pack(fill=tk.X, padx=10, pady=5)
-        
-        # 输入区域
-        self.entry_label = tk.Label(self.root, text="Enter Product Name:")
-        self.entry_label.pack(pady=10)
-        
-        self.entry_field = tk.Entry(self.root, width=50)
-        self.entry_field.pack(pady=5)
-        self.entry_field.bind('<Return>', self.handle_entry)
-        self.entry_field.bind("<FocusIn>", self.stop_pasteboard_monitoring)
-        self.entry_field.bind("<FocusOut>", self.start_pasteboard_monitoring)
 
     def clear_pasteboard(self):
         """清空剪贴板"""
@@ -297,7 +450,7 @@ class ProductManagerUI:
                 except Exception as e:
                     print(f"Error checking clipboard: {e}")
             
-            # 如果程序仍在运行且窗口存在，继续定时检查
+            # 如果程序仍在运行且窗口在，继续定时检查
             if self.is_running and hasattr(self, 'root') and self.root.winfo_exists():
                 self.after_id = self.root.after(500, self.check_clipboard_updates)
         except Exception as e:
@@ -309,7 +462,7 @@ class ProductManagerUI:
         # 不再需要单独的监控线程，使用check_clipboard_updates代替
 
     def safe_update_entry(self, text):
-        """在主线程中安全地更新输入框和处理输入"""
+        """在主线程中安全地更新输入框和处理入"""
         try:
             if not self.is_running:
                 return
@@ -346,19 +499,36 @@ class ProductManagerUI:
         self.refresh_tree()
 
     def refresh_tree(self):
-        self.tree.delete(*self.tree.get_children())
-        for product in self.filtered_products:
-            values = [
-                product.get("Name", ""),
-                product.get("Specs", ""),
-                product.get("Cost", ""),
-                product.get("Link", ""),
-                product.get("Code", ""),
-                product.get("LocationCode", ""),
-                product.get("StockQuantity", ""),
-                product.get("AddedDate", "")
-            ]
-            self.tree.insert("", tk.END, values=tuple(values))
+        """刷新树形视图的显示"""
+        try:
+            self.tree.delete(*self.tree.get_children())
+            for product in self.filtered_products:
+                try:
+                    # 获取商品代码并确保是整数
+                    product_code = product.get("Code", 0)
+                    if isinstance(product_code, str):
+                        product_code = int(float(product_code))
+                    elif isinstance(product_code, float):
+                        product_code = int(product_code)
+                    
+                    values = [
+                        product.get("Name", ""),
+                        product.get("Specs", ""),
+                        product.get("Cost", ""),
+                        product.get("Link", ""),
+                        str(product_code),  # 将商品代码转换为字符串显示
+                        product.get("LocationCode", ""),
+                        str(product.get("StockQuantity", 0)),  # 确保库存显示为字符串
+                        product.get("AddedDate", "")
+                    ]
+                    self.tree.insert("", tk.END, values=tuple(values))
+                except Exception as e:
+                    print(f"处理商品时出错: {e}")
+                    print(f"问题商品数据: {product}")
+                    continue
+        except Exception as e:
+            print(f"刷新显示时出错: {e}")
+            messagebox.showerror("错误", f"刷新显示时出错: {str(e)}")
 
     def on_column_double_click(self, event):
         # Identify the region where the double-click occurred
@@ -410,9 +580,19 @@ class ProductManagerUI:
             current_value = item_values[col_index]
             
             # Create an entry widget at the position of the clicked cell
-            entry = tk.Entry(self.tree, width=20)
+            entry = ttk.Entry(self.root)  # 使用self.root作为父窗口
             entry.insert(0, current_value)
-            entry.place(x=event.x, y=event.y, anchor="w")
+            
+            # 获取树形视图中单元格的坐标
+            bbox = self.tree.bbox(item[0], col)
+            if bbox:
+                # 将树形视图的坐标转换为root窗口的坐标
+                x = self.tree.winfo_rootx() + bbox[0]
+                y = self.tree.winfo_rooty() + bbox[1]
+                w = bbox[2]
+                
+                # 设置Entry的位置和大小
+                entry.place(in_=self.tree, x=bbox[0], y=bbox[1], width=w)
             
             # Function to save the edited value
             def save_edit(event=None):
@@ -430,7 +610,7 @@ class ProductManagerUI:
             # Bind the entry widget to save the edit when losing focus (clicking outside)
             entry.bind('<FocusOut>', save_edit)
             
-            entry.focus()  # Focus on the entry widget
+            entry.focus_set()  # Focus on the entry widget
     
     def update_product(self, item_id, col_index, new_value):
         # Get the corresponding product data based on the item (row) in the Treeview
@@ -439,7 +619,7 @@ class ProductManagerUI:
         
         # Find the product in the product list by matching the code
         for product in self.products:
-            if int(product['Code']) == code:  # 确保比较时都是整数
+            if int(product['Code']) == code:  # 确保比较时是整数
                 column_name = self.tree['columns'][col_index]
                 # 根据列类型处理新值
                 if column_name == "Code":
@@ -463,7 +643,7 @@ class ProductManagerUI:
                     messagebox.showinfo("提示", "库存数量只能在库存管理界面修改")
                     return
                 elif column_name == "LocationCode":
-                    # LocationCode 保持为字符串，不需要数字验证
+                    # LocationCode 持为字符串，不需要数字验证
                     new_value = str(new_value).strip()
                 
                 # Update the correct field in the product dictionary
@@ -474,10 +654,32 @@ class ProductManagerUI:
         self.save_to_excel()
 
     def generate_unique_code(self):
-        while True:
-            new_code = random.randint(1000000, 9999999)  # 直接生成整数
-            if all(int(str(product["Code"])) != new_code for product in self.products):  # 确保比较时都是整数
-                return new_code  # 返回整数
+        """生成唯一的7位整数商品代码"""
+        max_attempts = 100  # 最大尝试次数
+        for attempt in range(max_attempts):
+            try:
+                new_code = random.randint(1000000, 9999999)  # 生成7位整数
+                # 检查现有产品列表
+                existing_codes = set()
+                for product in self.products:
+                    try:
+                        code = product.get("Code", 0)
+                        if isinstance(code, str):
+                            code = int(float(code))
+                        existing_codes.add(code)
+                    except (ValueError, TypeError):
+                        continue
+                
+                # 如果生成的代码不在现有代码中
+                if new_code not in existing_codes:
+                    print(f"成功生成新Code: {new_code}")
+                    return new_code
+            except Exception as e:
+                print(f"生成Code时出错 (尝试 {attempt + 1}/{max_attempts}): {e}")
+                continue
+        
+        # 如果达到最大尝试次数仍未生成有效代码
+        raise ValueError("无法生成唯一的商品代码，请重试")
 
     def handle_entry(self, event):
         try:
@@ -489,11 +691,21 @@ class ProductManagerUI:
             user_input = self.entry_field.get().strip()
             if self.current_input_step == 0:  # Product Name
                 if user_input:
-                    self.current_product["Name"] = user_input
+                    # 初始化新产品时，创建完整的数据结构
+                    self.current_product = {
+                        "Name": user_input,  # 直接设置名称
+                        "Specs": "",
+                        "Cost": "¥0.00",
+                        "Link": "",
+                        "Code": 0,  # 初始化为整数0
+                        "LocationCode": "",
+                        "StockQuantity": 0,
+                        "AddedDate": datetime.now().strftime("%Y-%m-%d")
+                    }
                     self.current_input_step += 1
                     self.entry_label.config(text="Enter Product Specifications (or press Enter to skip):")
                     self.entry_field.delete(0, tk.END)
-                    self.stop_pasteboard_monitoring()  # 停止监控，因为规格��入不需要
+                    self.stop_pasteboard_monitoring()
                 else:
                     self.status_label.config(text="Error: Product name cannot be empty.")
             elif self.current_input_step == 1:  # Specifications
@@ -501,46 +713,75 @@ class ProductManagerUI:
                 self.current_input_step += 1
                 self.entry_label.config(text="Enter Product Cost:")
                 self.entry_field.delete(0, tk.END)
-                self.stop_pasteboard_monitoring()  # 停止监控，因为价格输入不需要
+                self.stop_pasteboard_monitoring()
             elif self.current_input_step == 2:  # Cost
                 try:
                     cost = float(user_input) if user_input else 0.0
-                    self.current_product["Cost"] = f"{cost:.2f}"
+                    self.current_product["Cost"] = f"¥{cost:.2f}"
                     self.current_input_step += 1
                     self.entry_label.config(text="Enter Product Link:")
                     self.entry_field.delete(0, tk.END)
-                    self.start_pasteboard_monitoring()  # 启动监控，因为链接输入需要
+                    self.start_pasteboard_monitoring()
                 except ValueError:
                     self.status_label.config(text="Error: Please enter a valid cost.")
             elif self.current_input_step == 3:  # Link
                 if user_input:
                     try:
-                        # 直接保存链接，不需要数字验证
-                        self.current_product["Link"] = user_input
-                        # 生成新的唯一Code
-                        self.current_product["Code"] = self.generate_unique_code()
-                        self.current_product["LocationCode"] = ""
-                        self.current_product["StockQuantity"] = 0  # 新产品初始库存为0
-                        self.current_product["AddedDate"] = datetime.now().strftime("%Y-%m-%d")
+                        print("\n开始处理新产品数据...")
                         
-                        # 保存产品信息
-                        self.products.append(self.current_product)
-                        self.save_to_excel()
-                        self.filtered_products = self.products
+                        # 1. 保存链接
+                        self.current_product["Link"] = user_input
+                        print(f"已保存链接: {user_input}")
+                        
+                        # 2. 生成新的Code
+                        try:
+                            new_code = self.generate_unique_code()
+                            if not isinstance(new_code, int) or new_code <= 0:
+                                raise ValueError(f"Invalid code generated: {new_code}")
+                            print(f"生成的新Code: {new_code} (类型: {type(new_code)})")
+                            self.current_product["Code"] = new_code
+                        except Exception as code_error:
+                            print(f"生成Code时���错: {code_error}")
+                            raise ValueError("无法生成有效的商品代码")
+                        
+                        # 3. 打印完整的产品数据进行验证
+                        print("\n产品数据验证:")
+                        for field in ["Name", "Specs", "Cost", "Link", "Code", "LocationCode", "StockQuantity", "AddedDate"]:
+                            print(f"{field}: {type(self.current_product[field])} = {self.current_product[field]}")
+                        
+                        # 4. 保存到数据库
+                        print("\n保存到数据库...")
+                        new_product = self.current_product.copy()
+                        self.products.append(new_product)
+                        
+                        # 5. 保存到Excel
+                        print("保存到Excel...")
+                        save_result = self.save_to_excel()
+                        if not save_result:
+                            raise Exception("保存到Excel失败")
+                        
+                        # 6. 更新显示
+                        self.filtered_products = self.products.copy()
                         self.refresh_tree()
                         
-                        # 重置状态
+                        # 7. 重置状态
+                        print("重���状态...")
                         self.current_input_step = 0
                         self.current_product = {}
                         self.entry_label.config(text="Enter Product Name:")
                         self.entry_field.delete(0, tk.END)
-                        self.start_pasteboard_monitoring()  # 重新启动监控，准备下一个产品名称输入
+                        self.start_pasteboard_monitoring()
                         
-                        # 更新状态标签
+                        # 8. 更新状态标签
                         self.status_label.config(text="Product added successfully.")
+                        print("产品添加完成!\n")
+                        
                     except Exception as e:
-                        print(f"Error processing link: {e}")
-                        self.status_label.config(text=f"Error processing link: {str(e)}")
+                        print(f"\n错误详情:")
+                        print(f"- 错误类型: {type(e)}")
+                        print(f"- 错误信息: {str(e)}")
+                        print(f"- 当前产品数据: {self.current_product}")
+                        self.status_label.config(text=f"Error: {str(e)}")
                 else:
                     self.status_label.config(text="Error: Product link cannot be empty.")
         except Exception as e:
@@ -550,7 +791,7 @@ class ProductManagerUI:
     def delete_selected_entries(self):
         selected_items = self.tree.selection()
         if selected_items:
-            # 强制进行圾回收，释放可能的文件句柄
+            # 强制进行垃圾回收，释��可能的文件句柄
             gc.collect()
             
             product_codes_to_delete = []
@@ -558,60 +799,69 @@ class ProductManagerUI:
                 item_values = self.tree.item(item, 'values')
                 if len(item_values) >= 5:
                     try:
-                        product_code = int(item_values[4])  # 转换为整数
-                        product_codes_to_delete.append(product_code)
-                        # 删除关联的图片文件
-                        img_dir = os.path.join("product_images", str(product_code))  # 转换为字符串用于路径
-                        if os.path.exists(img_dir):
-                            try:
-                                # 先尝试删除文件夹内的所有文件
-                                for img_file in os.listdir(img_dir):
-                                    file_path = os.path.join(img_dir, img_file)
-                                    try:
-                                        if os.path.isfile(file_path):
-                                            # 确保文件已关闭
-                                            try:
-                                                with open(file_path, 'rb') as f:
-                                                    pass
-                                            except:
-                                                pass
-                                            os.unlink(file_path)
-                                        elif os.path.isdir(file_path):
-                                            shutil.rmtree(file_path, ignore_errors=True)
-                                    except Exception as e:
-                                        print(f"Error deleting file {file_path}: {e}")
-                                        continue
-                                
-                                # 等待一小段时间确保文件被释放
-                                time.sleep(0.5)
-                                gc.collect()
-                                
-                                # 然后尝试删除文件夹
-                                if os.path.exists(img_dir):
-                                    shutil.rmtree(img_dir, ignore_errors=True)
-                            except Exception as e:
-                                print(f"Error handling directory {img_dir}: {e}")
-                                continue
+                        # 获取商品代码（第5列）
+                        product_code = item_values[4]
+                        print(f"处理商品代码: {product_code}")
+                        
+                        # 如果商品代码不为空，则处理删除
+                        if product_code and str(product_code).strip():
+                            # 将商品代码转换为整数
+                            product_code = int(float(str(product_code)))
+                            product_codes_to_delete.append(product_code)
+                            print(f"将删除商品代码: {product_code}")
+                            
+                            # 删除关联的图片文件
+                            img_dir = os.path.join("product_images", str(product_code))
+                            if os.path.exists(img_dir):
+                                try:
+                                    # 先尝试删除文件夹内的所有文件
+                                    for img_file in os.listdir(img_dir):
+                                        file_path = os.path.join(img_dir, img_file)
+                                        try:
+                                            if os.path.isfile(file_path):
+                                                os.unlink(file_path)
+                                            elif os.path.isdir(file_path):
+                                                shutil.rmtree(file_path, ignore_errors=True)
+                                        except Exception as e:
+                                            print(f"删除文件出错 {file_path}: {e}")
+                                            continue
+                                    
+                                    # 等待一段时间保文件被释放
+                                    time.sleep(0.5)
+                                    gc.collect()
+                                    
+                                    # 然后尝试删除文件夹
+                                    if os.path.exists(img_dir):
+                                        shutil.rmtree(img_dir, ignore_errors=True)
+                                except Exception as e:
+                                    print(f"处理目录出错 {img_dir}: {e}")
+                                    continue
+                        else:
+                            print(f"跳过空的商品代码")
+                            continue
+                            
                     except (ValueError, TypeError) as e:
-                        print(f"Error converting product code to integer: {e}")
+                        print(f"处理商品代码出错 '{product_code}': {e}")
                         continue
                             
                     self.tree.delete(item)
             
-            # 更新产品列表，确保使用整数比较
-            self.products = [p for p in self.products if int(str(p['Code'])) not in product_codes_to_delete]
-            self.filtered_products = [p for p in self.filtered_products if int(str(p['Code'])) not in product_codes_to_delete]
+            # 更新产品列表
+            print(f"要删除的商品代码列表: {product_codes_to_delete}")
+            self.products = [p for p in self.products if int(float(str(p.get('Code', 0)))) not in product_codes_to_delete]
+            self.filtered_products = [p for p in self.filtered_products if int(float(str(p.get('Code', 0)))) not in product_codes_to_delete]
             
             try:
                 gc.collect()
                 self.save_to_excel()
                 self.refresh_tree()
-                self.status_label.config(text="Selected entries deleted successfully.")
+                self.status_label.config(text="选中的商品已成功删除。")
             except Exception as e:
-                self.status_label.config(text=f"Error saving changes: {str(e)}")
-                messagebox.showerror("Error", f"Error saving changes: {str(e)}")
+                print(f"保存更改时出错: {e}")
+                self.status_label.config(text=f"保存更改时出错: {str(e)}")
+                messagebox.showerror("错误", f"保存更改时出错: {str(e)}")
         else:
-            self.status_label.config(text="No items selected for deletion.")
+            self.status_label.config(text="未选择要删除的商品。")
 
     def clear_database(self):
         confirmation = simpledialog.askstring("Clear Database", "Type 'delete' to confirm:")
@@ -639,8 +889,12 @@ class ProductManagerUI:
             if self.root:
                 self.root.quit()
                 self.root.destroy()
+                
+            # 显示主窗口
             import main
-            main.ProductManager()
+            main_app = main.ProductManager()
+            main_app.root.deiconify()  # 显示主窗口
+            
         except Exception as e:
             print(f"Error returning to main menu: {e}")
 
@@ -681,7 +935,7 @@ class ProductManagerUI:
         # 获取当前值
         current_value = self.tree.item(item, "values")[col_num - 1]
         
-        # 创建编辑框
+        # 建编辑框
         def edit_cell(event=None):
             try:
                 # 获取新值
@@ -693,7 +947,7 @@ class ProductManagerUI:
                         # 移除货币符号并转换为浮点数
                         new_value = float(str(new_value).replace('¥', '').replace('￥', '').strip())
                     except ValueError:
-                        messagebox.showerror("错误", "请输入有效的价格��字")
+                        messagebox.showerror("错误", "请输入有效的价格")
                         return
                 elif col_num == 7:  # StockQuantity列
                     try:
@@ -713,7 +967,7 @@ class ProductManagerUI:
                     wb = openpyxl.load_workbook('products.xlsx')
                     ws = wb.active
                     
-                    # 找到对应的行
+                    # 找到应的行
                     code = values[4]  # Code在第5列
                     for row in range(2, ws.max_row + 1):
                         if str(ws.cell(row=row, column=5).value) == str(code):
@@ -742,7 +996,7 @@ class ProductManagerUI:
                 messagebox.showerror("错误", f"编辑单元格时出错: {str(e)}")
                 entry.destroy()
         
-        # 创建Entry控件
+        # 创建Entry件
         entry = ttk.Entry(self.tree)
         entry.insert(0, current_value)
         entry.select_range(0, tk.END)
@@ -759,6 +1013,38 @@ class ProductManagerUI:
         
         # 设置焦点
         entry.focus_set()
+
+    def fix_missing_codes(self):
+        """修复没有商品代码的产品"""
+        try:
+            fixed_count = 0
+            for product in self.products:
+                try:
+                    # 检查商品代码是否缺失或无效
+                    current_code = product.get("Code", 0)
+                    if current_code == 0 or current_code is None or (isinstance(current_code, str) and not current_code.strip()):
+                        # 生成新的商品代码
+                        new_code = self.generate_unique_code()
+                        if new_code:
+                            product["Code"] = new_code
+                            fixed_count += 1
+                except Exception as e:
+                    print(f"处理单个产品时出错: {e}")
+                    continue
+
+            if fixed_count > 0:
+                # 保存更改
+                self.save_to_excel()
+                # 刷新显示
+                self.refresh_tree()
+                self.status_label.config(text=f"成功修复 {fixed_count} 个产品的商品代码")
+            else:
+                self.status_label.config(text="没有发现需要修复的商品代码")
+
+        except Exception as e:
+            print(f"修复商品代码时出错: {e}")
+            self.status_label.config(text=f"修复商品代码时出错: {str(e)}")
+            messagebox.showerror("错误", f"修复商品代码时出错: {str(e)}")
 
 # Example use:
 if __name__ == "__main__":

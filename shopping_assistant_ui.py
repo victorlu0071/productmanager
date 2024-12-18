@@ -30,14 +30,84 @@ class ShoppingAssistantUI:
         self.current_url = None  # 添加当前URL记录
         self.processed_products = set()  # 添加已处理商品记录
         self.last_product_id = None  # 添加最后访问的产品ID记录
+        self.setup_styles()  # 设置样式
         self.init_gui()
         
+    def setup_styles(self):
+        """设置UI样式"""
+        # 定义颜色
+        self.colors = {
+            'primary': '#2196F3',  # 主色调
+            'secondary': '#64B5F6',  # 次要色调
+            'success': '#4CAF50',  # 成功色
+            'warning': '#FFC107',  # 警告色
+            'error': '#F44336',  # 错误色
+            'background': '#F5F5F5',  # 背景色
+            'text': '#212121',  # 文本色
+            'light_text': '#757575'  # 浅色文本
+        }
+
+        # 创建自定义样式
+        style = ttk.Style()
+        style.theme_use('clam')
+
+        # 配置Treeview样式
+        style.configure("Treeview",
+            background=self.colors['background'],
+            foreground=self.colors['text'],
+            fieldbackground=self.colors['background'],
+            rowheight=30,
+            font=('Microsoft YaHei UI', 10))
+        
+        style.configure("Treeview.Heading",
+            background=self.colors['primary'],
+            foreground="white",
+            relief="flat",
+            font=('Microsoft YaHei UI', 10, 'bold'))
+        
+        style.map("Treeview.Heading",
+            background=[('active', self.colors['secondary'])])
+
+        # 配置按钮样式
+        style.configure("Primary.TButton",
+            background=self.colors['primary'],
+            foreground="white",
+            padding=(20, 10),
+            font=('Microsoft YaHei UI', 10))
+        
+        style.map("Primary.TButton",
+            background=[('active', self.colors['secondary'])])
+
+        # 配置危险按钮样式
+        style.configure("Danger.TButton",
+            background=self.colors['error'],
+            foreground="white",
+            padding=(20, 10),
+            font=('Microsoft YaHei UI', 10))
+        
+        style.map("Danger.TButton",
+            background=[('active', '#E57373')])
+
+        # 配置标签样式
+        style.configure("Info.TLabel",
+            background=self.colors['background'],
+            foreground=self.colors['text'],
+            font=('Microsoft YaHei UI', 10))
+
+        # 配置输入框样式
+        style.configure("Custom.TEntry",
+            fieldbackground="white",
+            padding=(5, 5))
+
     def init_gui(self):
         try:
             self.root = tk.Tk()
-            self.root.title("Shopping Assistant")
+            self.root.title("采购助手")
             
             self.root.protocol("WM_DELETE_WINDOW", self.return_to_main_menu)
+            
+            # 设置窗口样式
+            self.root.configure(bg=self.colors['background'])
             
             window_width = 1080
             window_height = 700
@@ -47,34 +117,81 @@ class ShoppingAssistantUI:
             position_left = int((screen_width - window_width) / 2)
             self.root.geometry(f"{window_width}x{window_height}+{position_left}+{position_top}")
 
+            # 创建主框架
+            main_frame = ttk.Frame(self.root)
+            main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
             # 控制按钮
-            control_frame = tk.Frame(self.root)
+            control_frame = ttk.Frame(main_frame)
             control_frame.pack(pady=10)
 
-            self.start_button = tk.Button(control_frame, text="Start Browser", command=self.start_recording)
+            self.start_button = ttk.Button(control_frame, 
+                                         text="启动浏览器", 
+                                         command=self.start_recording,
+                                         style="Primary.TButton")
             self.start_button.pack(side=tk.LEFT, padx=5)
 
-            self.continue_button = tk.Button(control_frame, text="Continue Recording", command=self.continue_recording)
+            self.continue_button = ttk.Button(control_frame, 
+                                            text="继续记录", 
+                                            command=self.continue_recording,
+                                            style="Primary.TButton")
             self.continue_button.pack(side=tk.LEFT, padx=5)
             self.continue_button.config(state=tk.DISABLED)
 
-            self.stop_button = tk.Button(control_frame, text="Stop Recording", command=self.stop_recording)
+            self.stop_button = ttk.Button(control_frame, 
+                                        text="停止记录", 
+                                        command=self.stop_recording,
+                                        style="Danger.TButton")
             self.stop_button.pack(side=tk.LEFT, padx=5)
             self.stop_button.config(state=tk.DISABLED)
 
-            # 记录列表
-            self.tree = ttk.Treeview(self.root, columns=("Time", "Website", "Product", "Price"), show='headings')
-            for col in ["Time", "Website", "Product", "Price"]:
-                self.tree.heading(col, text=col)
-                self.tree.column(col, width=150)
-            self.tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            # Treeview区域
+            tree_frame = ttk.Frame(main_frame)
+            tree_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+
+            # 创建Treeview的滚动条
+            tree_scroll = ttk.Scrollbar(tree_frame)
+            tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+            # Treeview
+            self.tree = ttk.Treeview(tree_frame, 
+                                   columns=("Time", "Website", "Product", "Price"),
+                                   show='headings',
+                                   style="Treeview",
+                                   yscrollcommand=tree_scroll.set)
+            
+            tree_scroll.config(command=self.tree.yview)
+
+            # 设置列宽和表头
+            column_headers = {
+                "Time": "时间",
+                "Website": "网站",
+                "Product": "商品",
+                "Price": "价格"
+            }
+
+            for col in column_headers:
+                self.tree.heading(col, text=column_headers[col])
+                self.tree.column(col, width=200, anchor='center')
+
+            self.tree.pack(fill=tk.BOTH, expand=True)
+
+            # 按钮区域
+            button_frame = ttk.Frame(main_frame)
+            button_frame.pack(pady=10)
+
+            back_button = ttk.Button(button_frame, 
+                                   text="返回主菜单", 
+                                   command=self.return_to_main_menu,
+                                   style="Primary.TButton")
+            back_button.pack(pady=5)
 
             # 状态标签
-            self.status_label = tk.Label(self.root, text="Ready", anchor="w")
+            self.status_label = ttk.Label(main_frame, 
+                                        text="就绪", 
+                                        anchor="w",
+                                        style="Info.TLabel")
             self.status_label.pack(fill=tk.X, padx=10, pady=5)
-
-            back_button = tk.Button(self.root, text="Back", command=self.return_to_main_menu)
-            back_button.pack(pady=10)
 
             self.root.mainloop()
 
@@ -200,8 +317,8 @@ class ShoppingAssistantUI:
             print(f"Error clearing cache: {e}")
 
     def monitor_pages(self):
-        """监控浏览器标签页，简化为只处理当前活动标签页"""
-        last_processed_url = None  # 添加URL处理标记
+        """监控浏览器标签页，当前标签关闭时自动切换到下一个标签"""
+        last_processed_url = None
         
         while self.recording:
             try:
@@ -211,7 +328,27 @@ class ShoppingAssistantUI:
                     self.root.after(0, self.stop_recording)
                     break
 
-                # 获取当前标签页
+                # 检查当前标签页是否还存在
+                try:
+                    current_window = self.browser.current_window_handle
+                except:
+                    # 如果当前标签页不存在，切换到可用的标签页
+                    if self.browser.window_handles:
+                        print("Current tab closed, switching to next available tab...")
+                        # 获取所有标签页
+                        all_handles = self.browser.window_handles
+                        # 切换到第一个可用标签页
+                        self.browser.switch_to.window(all_handles[0])
+                        # 重置处理状态
+                        last_processed_url = None
+                        time.sleep(0.5)  # 等待切换完成
+                        continue
+                    else:
+                        print("No available tabs. Stopping recording...")
+                        self.root.after(0, self.stop_recording)
+                        break
+
+                # 获取当前标签页URL
                 try:
                     current_url = self.browser.current_url
                     # 如果URL没有变化，跳过处理
@@ -219,6 +356,8 @@ class ShoppingAssistantUI:
                         time.sleep(0.3)
                         continue
                 except:
+                    # 如果获取URL失败，可能是标签页正在加载或已关闭
+                    print("Failed to get current URL, checking tab status...")
                     time.sleep(0.5)
                     continue
 
@@ -265,10 +404,12 @@ class ShoppingAssistantUI:
                                 print(f"Successfully saved {saved_count} specifications to database")
                         last_processed_url = current_url
 
-                time.sleep(0.3)  # 降低CPU使用率
+                time.sleep(0.3)  # 低CPU使用率
 
             except Exception as e:
                 print(f"Error in monitor_pages: {e}")
+                import traceback
+                print(traceback.format_exc())
                 time.sleep(0.5)
 
     def record_product_info(self):
@@ -315,7 +456,7 @@ class ShoppingAssistantUI:
                                     current_specs.append(spec_text)
                             
                             # 创建规格组合
-                            spec_combination = ";".join(current_specs) if current_specs else "默认���格:默认"
+                            spec_combination = ";".join(current_specs) if current_specs else "默认格:默认"
                             
                             # 创建缓存键
                             cache_key = f"{self.last_product_id}_{spec_combination}"
@@ -435,7 +576,7 @@ class ShoppingAssistantUI:
             except ValueError:
                 price = 0.00
             
-            # ��取规格信息
+            # 获取规格信息
             specs = []
             try:
                 spec_elements = driver.find_elements(By.CSS_SELECTOR, ".sku-name")
@@ -525,7 +666,7 @@ class ShoppingAssistantUI:
                     if isinstance(e, requests.exceptions.SSLError):
                         print("SSL Error occurred, refreshing page and trying one last time...")
                         try:
-                            # ���新当前页面
+                            # 刷新当前页面
                             self.browser.refresh()
                             time.sleep(2)  # 等待页面加载
                             # 最后一次尝试
@@ -774,7 +915,7 @@ class ShoppingAssistantUI:
                         if spec_text:
                             specs.append(spec_text)
                 else:
-                    # 原有产品��面规格获取逻辑
+                    # 原有产品页面规格获取逻辑
                     spec_items = self.browser.find_elements(By.CLASS_NAME, "spec-item")
                     specs = []
                     for item in spec_items:
@@ -893,7 +1034,7 @@ class ShoppingAssistantUI:
             formatted_price = "¥0.00"
             db_price = 0.0
             
-        # ��理数量格式
+        # 处理数量格式
         try:
             quantity_int = int(str(quantity).strip())
         except:
@@ -930,7 +1071,7 @@ class ShoppingAssistantUI:
                 save_dir = os.path.join("product_images", str(product_code))  # 转换为字符串用于路径
                 os.makedirs(save_dir, exist_ok=True)
                 
-                # 下载并保��原始图片
+                # 下载并保存原始图片
                 saved_images = []
                 temp_files = []  # 用于跟踪临时文件
                 
@@ -996,7 +1137,7 @@ class ShoppingAssistantUI:
                 for row in range(2, last_row + 1):
                     cell_value = ws.cell(row=row, column=5).value  # Code在第5列
                     try:
-                        if int(str(cell_value)) == product_code:  # 确保比较时都是整数
+                        if int(str(cell_value)) == product_code:  # 确保比时都是整数
                             product_row = row
                             break
                     except (ValueError, TypeError):
@@ -1050,7 +1191,7 @@ class ShoppingAssistantUI:
                     retry_count += 1
                     if retry_count >= max_retries:
                         self.status_label.config(text="无法保存Excel文件，请确保文件未被其他程序打开")
-                        messagebox.showerror("错误", "请关闭Excel文件后重试")
+                        messagebox.showerror("��误", "请关闭Excel文件后重试")
                         raise
                     time.sleep(1)  # 等待1秒后重试
                     continue
