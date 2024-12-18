@@ -119,10 +119,50 @@ class ProductManager:
 
         self.root.mainloop()
 
+    def return_to_main_menu(self):
+        try:
+            print("Returning to main menu")
+            self.is_running = False
+            self.pasteboard_monitoring = False
+            
+            # 取消所有pending的after调用
+            if hasattr(self, 'after_id'):
+                try:
+                    self.root.after_cancel(self.after_id)
+                except Exception as e:
+                    print(f"Error canceling after: {e}")
+            
+            # 显示主窗口
+            if hasattr(self, 'root') and self.root:
+                try:
+                    self.root.destroy()
+                except Exception as e:
+                    print(f"Error destroying window: {e}")
+            
+            # 重新创建主窗口
+            ProductManager()
+            
+        except Exception as e:
+            print(f"Error returning to main menu: {e}")
+
     def exit_program(self):
+        print("Exiting program")
+        self.is_running = False
+        self.pasteboard_monitoring = False
+        
+        # 取消所有pending的after调用
+        if hasattr(self, 'after_id'):
+            try:
+                self.root.after_cancel(self.after_id)
+            except Exception as e:
+                print(f"Error canceling after: {e}")
+        
         if self.root:
-            self.root.quit()
-            self.root.destroy()
+            try:
+                self.root.quit()
+                self.root.destroy()
+            except Exception as e:
+                print(f"Error destroying window: {e}")
 
     def open_product_manager(self):
         if self.root:
